@@ -24,6 +24,8 @@ import { createWorker } from 'tesseract.js';
 import * as XLSX from 'xlsx';
 
 import api from '../services/api';
+import { enhanceDetections } from '../utils/engineeringDetection';
+import { contextualFilter } from '../utils/contextualFilter';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -97,22 +99,7 @@ const isDetectionText = (rawText) => {
     return false;
   }
 
-  return (
-    DETECTION_PATTERNS.tolerance.test(text) ||
-    DETECTION_PATTERNS.bilateral.test(text) ||
-    DETECTION_PATTERNS.diameter.test(text) ||
-    DETECTION_PATTERNS.radius.test(text) ||
-    DETECTION_PATTERNS.dimension.test(text) ||
-    DETECTION_PATTERNS.smallTolerance.test(text) ||
-    DETECTION_PATTERNS.fit.test(text) ||
-    DETECTION_PATTERNS.angle.test(text) ||
-    DETECTION_PATTERNS.angleTolerance.test(text) ||
-    DETECTION_PATTERNS.angularToleranceLine.test(text) ||
-    DETECTION_PATTERNS.bareFit.test(text) ||
-    DETECTION_PATTERNS.thread.test(text) ||
-    DETECTION_PATTERNS.datumFeature.test(text) ||
-    DETECTION_PATTERNS.symbol.test(text)
-  );
+  return true; // Always allow any text/number during manual ballooning
 };
 
 const detectionCenterX = (item) =>
@@ -1850,6 +1837,20 @@ export default function DrawingWorkspace() {
     );
   };
 
+  const handleAnchorPointerDown = (event, balloon) => {
+    event.stopPropagation();
+    setSelectedBalloonId(balloon._id);
+    dragBalloonRef.current = {
+      balloonId: balloon._id,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      initialX: event.clientX,
+      initialY: event.clientY,
+      isAnchorDrag: true
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
   const handleBalloonPointerMove = (
     event
   ) => {
@@ -1873,17 +1874,19 @@ export default function DrawingWorkspace() {
       prev.map((balloon) => {
         if (balloon._id !== drag.balloonId) return balloon;
 
-        let newX = balloon.x + dx;
-        let newY = balloon.y + dy;
-
-        newX = Math.max(0, Math.min(canvas.width, newX));
-        newY = Math.max(0, Math.min(canvas.height, newY));
-
-        return {
-          ...balloon,
-          x: newX,
-          y: newY
-        };
+        if (drag.isAnchorDrag) {
+          let newAx = (balloon.anchorX ?? balloon.x + 25) + dx;
+          let newAy = (balloon.anchorY ?? balloon.y + 25) + dy;
+          newAx = Math.max(0, Math.min(canvas.width, newAx));
+          newAy = Math.max(0, Math.min(canvas.height, newAy));
+          return { ...balloon, anchorX: newAx, anchorY: newAy };
+        } else {
+          let newX = balloon.x + dx;
+          let newY = balloon.y + dy;
+          newX = Math.max(0, Math.min(canvas.width, newX));
+          newY = Math.max(0, Math.min(canvas.height, newY));
+          return { ...balloon, x: newX, y: newY };
+        }
       })
     );
   };
@@ -2046,12 +2049,9 @@ export default function DrawingWorkspace() {
             `/balloons/${balloon._id}`,
             {
               x: balloon.x,
-              y: balloon.y
-              /*
-                The anchor (value position)
-                is preserved so the arrow
-                keeps pointing at it.
-              */
+              y: balloon.y,
+              anchorX: balloon.anchorX,
+              anchorY: balloon.anchorY
             }
           );
 
@@ -2149,21 +2149,7 @@ export default function DrawingWorkspace() {
           item.transform?.[5] || 0
         );
 
-      // Ignore title block
-      if (
-        point[1] >
-        baseViewport.height * 0.80
-      ) {
-        continue;
-      }
-
-      // Ignore top-right revision area and right margins
-      if (
-        point[0] > baseViewport.width * 0.90 || 
-        (point[0] > baseViewport.width * 0.60 && point[1] < baseViewport.height * 0.15)
-      ) {
-        continue;
-      }
+      // Removed region constraints so users can manually balloon anything anywhere
 
       items.push({
         text,
@@ -2571,6 +2557,27 @@ export default function DrawingWorkspace() {
 
   /* OCR fallback for scanned drawings without a text layer. */
 
+  
+const extractOcrWords = (data) => {
+  const words = [];
+  if (data && data.blocks) {
+    data.blocks.forEach(block => {
+      if (block.paragraphs) {
+        block.paragraphs.forEach(para => {
+          if (para.lines) {
+            para.lines.forEach(line => {
+              if (line.words) {
+                words.push(...line.words);
+              }
+            });
+          }
+        });
+      }
+    });
+  }
+  return words;
+};
+
   const ocrReadRegion = async (rect) => {
     if (!pdfPage) {
       return [];
@@ -2656,83 +2663,66 @@ export default function DrawingWorkspace() {
         sh
       );
 
-      let words = [];
-      try {
-        const response = await api.post('/ocr/detect', {
-          imageBase64: crop.toDataURL('image/jpeg'),
-          isCrop: true
-        });
-        if (response.data && response.data.detections && response.data.detections.length > 0) {
-          words = response.data.detections.map(d => ({
-            text: d.text,
-            bbox: d.bbox,
-            confidence: d.confidence
-          }));
-        }
-      } catch (err) {
-        console.warn('Backend OCR failed, falling back to Tesseract...', err);
-      }
 
-      if (words.length === 0) {
-        if (!ocrWorkerRef.current) {
-          ocrWorkerRef.current = await createWorker('eng');
-        }
-        let { data } = await ocrWorkerRef.current.recognize(crop);
-        words = data.words.map(w => ({
+      let words = [];
+      if (!ocrWorkerRef.current) {
+        ocrWorkerRef.current = await createWorker('eng');
+      }
+      let { data } = await ocrWorkerRef.current.recognize(crop, {}, { blocks: true });
+      words = extractOcrWords(data).map(w => ({
+        text: w.text,
+        bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
+        confidence: w.confidence
+      }));
+
+      const hasValidText = words.some(w => isDetectionText(normalizeDetectionText(w.text).replace(/O(?=\d)/gi, '�').replace(/^0(?=\d)/, '�')));
+      if (!hasValidText && words.length <= 2) {
+        // Try counter-clockwise rotation (bottom-to-top text)
+        const rotCanvas = document.createElement('canvas');
+        rotCanvas.width = crop.height;
+        rotCanvas.height = crop.width;
+        const rctx = rotCanvas.getContext('2d');
+        rctx.translate(rotCanvas.width / 2, rotCanvas.height / 2);
+        rctx.rotate(-Math.PI / 2);
+        rctx.drawImage(crop, -crop.width / 2, -crop.height / 2);
+        
+        const { data: rotData } = await ocrWorkerRef.current.recognize(rotCanvas, {}, { blocks: true });
+        const rotWords = extractOcrWords(rotData).map(w => ({
           text: w.text,
-          bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
+          bbox: {
+            x0: crop.width - w.bbox.y1,
+            y0: w.bbox.x0,
+            x1: crop.width - w.bbox.y0,
+            y1: w.bbox.x1
+          },
           confidence: w.confidence
         }));
-
-        const hasValidText = words.some(w => isDetectionText(normalizeDetectionText(w.text).replace(/O(?=\d)/gi, 'Ø').replace(/^0(?=\d)/, 'Ø')));
-        if (!hasValidText && words.length <= 2) {
-          // Try counter-clockwise rotation (bottom-to-top text)
-          const rotCanvas = document.createElement('canvas');
-          rotCanvas.width = crop.height;
-          rotCanvas.height = crop.width;
-          const rctx = rotCanvas.getContext('2d');
-          rctx.translate(rotCanvas.width / 2, rotCanvas.height / 2);
-          rctx.rotate(-Math.PI / 2);
-          rctx.drawImage(crop, -crop.width / 2, -crop.height / 2);
+        
+        if (rotWords.some(w => isDetectionText(normalizeDetectionText(w.text).replace(/O(?=\d)/gi, '�').replace(/^0(?=\d)/, '�')))) {
+          words = rotWords;
+        } else {
+          // Try clockwise rotation (top-to-bottom text)
+          const rotCanvas2 = document.createElement('canvas');
+          rotCanvas2.width = crop.height;
+          rotCanvas2.height = crop.width;
+          const rctx2 = rotCanvas2.getContext('2d');
+          rctx2.translate(rotCanvas2.width / 2, rotCanvas2.height / 2);
+          rctx2.rotate(Math.PI / 2);
+          rctx2.drawImage(crop, -crop.width / 2, -crop.height / 2);
           
-          const { data: rotData } = await ocrWorkerRef.current.recognize(rotCanvas);
-          const rotWords = rotData.words.map(w => ({
+          const { data: rotData2 } = await ocrWorkerRef.current.recognize(rotCanvas2, {}, { blocks: true });
+          const rotWords2 = extractOcrWords(rotData2).map(w => ({
             text: w.text,
             bbox: {
-              x0: crop.width - w.bbox.y1,
-              y0: w.bbox.x0,
-              x1: crop.width - w.bbox.y0,
-              y1: w.bbox.x1
+              x0: w.bbox.y0,
+              y0: crop.height - w.bbox.x1,
+              x1: w.bbox.y1,
+              y1: crop.height - w.bbox.x0
             },
             confidence: w.confidence
           }));
-          
-          if (rotWords.some(w => isDetectionText(normalizeDetectionText(w.text).replace(/O(?=\d)/gi, 'Ø').replace(/^0(?=\d)/, 'Ø')))) {
-            words = rotWords;
-          } else {
-            // Try clockwise rotation (top-to-bottom text)
-            const rotCanvas2 = document.createElement('canvas');
-            rotCanvas2.width = crop.height;
-            rotCanvas2.height = crop.width;
-            const rctx2 = rotCanvas2.getContext('2d');
-            rctx2.translate(rotCanvas2.width / 2, rotCanvas2.height / 2);
-            rctx2.rotate(Math.PI / 2);
-            rctx2.drawImage(crop, -crop.width / 2, -crop.height / 2);
-            
-            const { data: rotData2 } = await ocrWorkerRef.current.recognize(rotCanvas2);
-            const rotWords2 = rotData2.words.map(w => ({
-              text: w.text,
-              bbox: {
-                x0: w.bbox.y0,
-                y0: crop.height - w.bbox.x1,
-                x1: w.bbox.y1,
-                y1: crop.height - w.bbox.x0
-              },
-              confidence: w.confidence
-            }));
-            if (rotWords2.some(w => isDetectionText(normalizeDetectionText(w.text).replace(/O(?=\d)/gi, 'Ø').replace(/^0(?=\d)/, 'Ø')))) {
-               words = rotWords2;
-            }
+          if (rotWords2.some(w => isDetectionText(normalizeDetectionText(w.text).replace(/O(?=\d)/gi, '�').replace(/^0(?=\d)/, '�')))) {
+             words = rotWords2;
           }
         }
       }
@@ -2852,7 +2842,16 @@ export default function DrawingWorkspace() {
         });
 
       if (inside.length > 0) {
-        target = inside[0];
+        // Sort geographically for reading order: top-to-bottom, left-to-right
+        inside.sort((a, b) => {
+          if (Math.abs(a.y - b.y) > 5) return a.y - b.y;
+          return a.x - b.x;
+        });
+        const combinedText = inside.map(i => i.text).join(' ');
+        target = {
+          ...inside[0],
+          text: combinedText
+        };
       } else {
         target = findNearestDimension(
           items,
@@ -2896,18 +2895,27 @@ export default function DrawingWorkspace() {
       await ocrReadRegion(rect);
 
     if (ocrItems.length > 0) {
-      const centerX =
-        (rect.x1 + rect.x2) / 2;
+      const centerX = (rect.x1 + rect.x2) / 2;
+      const centerY = (rect.y1 + rect.y2) / 2;
 
-      const centerY =
-        (rect.y1 + rect.y2) / 2;
+      // Filter OCR items that are geometrically inside the rectangle
+      const inside = ocrItems.filter((item) => {
+        const itemX = detectionCenterX(item);
+        const itemY = detectionCenterY(item);
+        return itemX >= rect.x1 && itemX <= rect.x2 && itemY >= rect.y1 && itemY <= rect.y2;
+      });
 
-      const target = findNearestDimension(
-        ocrItems,
-        centerX,
-        centerY,
-        90
-      );
+      let target = null;
+      if (inside.length > 0) {
+        inside.sort((a, b) => {
+          if (Math.abs(a.y - b.y) > 5) return a.y - b.y;
+          return a.x - b.x;
+        });
+        const combinedText = inside.map(i => i.text).join(' ');
+        target = { ...inside[0], text: combinedText };
+      } else {
+        target = findNearestDimension(ocrItems, centerX, centerY, 90);
+      }
 
       if (target) {
         return {
@@ -3657,6 +3665,7 @@ export default function DrawingWorkspace() {
         await pdfPage.getTextContent();
 
       const detected = [];
+      const allTextItems = [];
 
       console.log('=== AUTO-DETECT DEBUG ===');
       console.log('Total PDF text items:', textContent.items.length);
@@ -3710,8 +3719,22 @@ export default function DrawingWorkspace() {
             continue;
           }
 
-          const text =
-            normalizeText(item.str);
+          const pdfX = item.transform?.[4] || 0;
+          const pdfY = item.transform?.[5] || 0;
+          const point = baseViewport.convertToViewportPoint(pdfX, pdfY);
+          const x = point[0] * displayScale;
+          const y = point[1] * displayScale;
+          const width = Number(item.width || 0) * displayScale;
+          const height = Number(item.height || 0) * displayScale;
+
+          allTextItems.push({
+            text: item.str.trim(),
+            x, y, width, height,
+            centerX: x + width / 2,
+            centerY: y + height / 2
+          });
+
+          const text = normalizeText(item.str);
 
           // Only filter out pure text blocks without numbers
           const passes = /\d/.test(text);
@@ -3720,23 +3743,7 @@ export default function DrawingWorkspace() {
             continue;
           }
 
-          const pdfX =
-            item.transform?.[4] || 0;
 
-          const pdfY =
-            item.transform?.[5] || 0;
-
-          const point =
-            baseViewport.convertToViewportPoint(
-              pdfX,
-              pdfY
-            );
-
-          const x =
-            point[0] * displayScale;
-
-          const y =
-            point[1] * displayScale;
 
           console.log('ACCEPTED:', JSON.stringify(text), 'at', Math.round(x), Math.round(y));
 
@@ -3775,220 +3782,57 @@ export default function DrawingWorkspace() {
       const uniqueDetected = cleanAndGroupDetections(detected);
       let finalDetected = uniqueDetected;
 
-      // ALWAYS run OCR to catch vector dimensions because PDF text layer is missing them
-      if (true) {
-        setMessage('Scanning vector shapes and vertical text (takes ~7 seconds)...');
+      if (isGarbledPDF || detected.length < 10) {
+        setMessage('Scanning vector shapes and vertical text...');
 
         try {
           const ocrScale = 1.5;
+          const ocrViewport = pdfPage.getViewport({ scale: ocrScale });
+          const ocrCanvas = document.createElement('canvas');
+          const ocrContext = ocrCanvas.getContext('2d');
+          ocrCanvas.width = Math.ceil(ocrViewport.width);
+          ocrCanvas.height = Math.ceil(ocrViewport.height);
+          
+          ocrContext.filter = 'grayscale(1) contrast(160%) brightness(105%)';
+          await pdfPage.render({ canvasContext: ocrContext, viewport: ocrViewport }).promise;
 
-          const ocrViewport =
-            pdfPage.getViewport({
-              scale: ocrScale
+          if (!ocrWorkerRef.current) {
+            ocrWorkerRef.current = await createWorker('eng');
+            await ocrWorkerRef.current.setParameters({
+              tessedit_pageseg_mode: 11,
+              tessedit_char_whitelist: '0123456789.+-±ØRMDx°Hh ',
             });
-
-          const ocrCanvas =
-            document.createElement(
-              'canvas'
-            );
-
-          const ocrContext =
-            ocrCanvas.getContext('2d');
-
-          const pixelRatio = Math.min(
-            window.devicePixelRatio || 1,
-            2
-          );
-
-          ocrCanvas.width =
-            Math.ceil(
-              ocrViewport.width * pixelRatio
-            );
-
-          ocrCanvas.height =
-            Math.ceil(
-              ocrViewport.height * pixelRatio
-            );
-
-          ocrContext.setTransform(
-            pixelRatio,
-            0,
-            0,
-            pixelRatio,
-            0,
-            0
-          );
-
-          ocrContext.filter =
-            'grayscale(1) contrast(160%) brightness(105%)';
-
-          await pdfPage.render({
-            canvasContext:
-              ocrContext,
-            viewport:
-              ocrViewport
-          }).promise;
-
-          // Use the high-accuracy EasyOCR python backend instead of Tesseract!
-          const imageBase64 = ocrCanvas.toDataURL('image/jpeg', 0.8);
-          const response = await fetch('/api/ocr/detect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64, isCrop: false })
-          });
-          const ocrData = await response.json();
-          let words = (ocrData.detections || []).map(w => ({
-            text: w.text,
-            bbox: {
-              x0: w.bbox.x0,
-              y0: w.bbox.y0,
-              x1: w.bbox.x1,
-              y1: w.bbox.y1
-            },
-            confidence: w.confidence || 100
-          }));
-
-          // Phase 3: Spatial Clustering
-          // Merge OCR bounding boxes that are on the same line and close to each other
-          if (words.length > 0) {
-            words.sort((a, b) => {
-              if (Math.abs(a.bbox.y0 - b.bbox.y0) < 15) {
-                return a.bbox.x0 - b.bbox.x0;
-              }
-              return a.bbox.y0 - b.bbox.y0;
-            });
-            
-            const clusteredWords = [];
-            let currentCluster = { ...words[0], text: words[0].text.trim() };
-            
-            for (let i = 1; i < words.length; i++) {
-              const word = words[i];
-              const yDiff = Math.abs(word.bbox.y0 - currentCluster.bbox.y0);
-              const xGap = word.bbox.x0 - currentCluster.bbox.x1;
-              
-              // If on same line (Y diff < 15px) and close (X gap < 40px)
-              if (yDiff < 15 && xGap < 40 && xGap > -20) {
-                currentCluster.text += ' ' + word.text.trim();
-                currentCluster.bbox.x1 = Math.max(currentCluster.bbox.x1, word.bbox.x1);
-                currentCluster.bbox.y1 = Math.max(currentCluster.bbox.y1, word.bbox.y1);
-                currentCluster.bbox.y0 = Math.min(currentCluster.bbox.y0, word.bbox.y0);
-                currentCluster.confidence = (currentCluster.confidence + word.confidence) / 2;
-              } else {
-                clusteredWords.push(currentCluster);
-                currentCluster = { ...word, text: word.text.trim() };
-              }
-            }
-            clusteredWords.push(currentCluster);
-            words = clusteredWords;
           }
 
+          const { data } = await ocrWorkerRef.current.recognize(ocrCanvas, {}, { blocks: true });
+          let words = extractOcrWords(data) || [];
+
           const ocrDetected = [];
+          for (const word of words) {
+            if (!word.text || !word.text.trim()) continue;
+            let text = word.text;
+            
+            const x = (word.bbox.x0 / ocrScale) * displayScale;
+            const y = (word.bbox.y0 / ocrScale) * displayScale;
+            const width = ((word.bbox.x1 - word.bbox.x0) / ocrScale) * displayScale;
+            const height = ((word.bbox.y1 - word.bbox.y0) / ocrScale) * displayScale;
+            
+            allTextItems.push({
+              text: word.text.trim(),
+              x, y, width, height,
+              centerX: x + width / 2,
+              centerY: y + height / 2
+            });
 
-          for (
-            const word of words
-          ) {
-            if (
-              !word.text ||
-              !word.text.trim()
-            ) {
-              continue;
-            }
-
-            let text =
-              normalizeText(
-                word.text
-              );
-
-            /*
-              OCR corrections.
-            */
-
-            text =
-              text
-                .replace(
-                  /O(?=\d)/gi,
-                  'Ø'
-                )
-                .replace(
-                  /^0(?=\d)/,
-                  'Ø'
-                )
-                .replace(
-                  /x(?=\d)/gi,
-                  'Ø'
-                );
-
-            if (
-              !/\d/.test(text)
-            ) {
-              continue;
-            }
-
-            const ocrX =
-              word.bbox?.x0 || 0;
-
-            const ocrY =
-              word.bbox?.y0 || 0;
-
-            const x =
-              (ocrX / ocrScale) *
-              displayScale;
-
-            const y =
-              (ocrY / ocrScale) *
-              displayScale;
-
-            const pageY =
-              ocrY / ocrScale;
-
-            // Exclude bottom 20% for large title blocks
-            if (
-              pageY >
-              baseViewport.height * 0.80
-            ) {
-              continue;
-            }
-
-            const pageX =
-              ocrX / ocrScale;
-
-            // Exclude right-side margins more aggressively
-            if (
-              pageX >
-              baseViewport.width * 0.90 || 
-              (pageX > baseViewport.width * 0.60 && pageY < baseViewport.height * 0.15)
-            ) {
-              continue;
-            }
+            if (!/\d/.test(text)) continue;
 
             ocrDetected.push({
               text,
               x,
               y,
-
-              width:
-                Number(
-                  word.bbox?.x1 -
-                  word.bbox?.x0 ||
-                  0
-                ) /
-                ocrScale *
-                displayScale,
-
-              height:
-                Number(
-                  word.bbox?.y1 -
-                  word.bbox?.y0 ||
-                  0
-                ) /
-                ocrScale *
-                displayScale,
-
-              confidence:
-                Number(
-                  word.confidence || 0
-                ),
-
+              width: ((word.bbox.x1 - word.bbox.x0) / ocrScale) * displayScale,
+              height: ((word.bbox.y1 - word.bbox.y0) / ocrScale) * displayScale,
+              confidence: word.confidence,
               source: 'ocr'
             });
           }
@@ -4029,801 +3873,8 @@ export default function DrawingWorkspace() {
         return;
       }
 
-      /* =========================================================
-         9. SORT DETECTIONS
-      ========================================================= */
-
-      finalDetected.sort(
-        (a, b) => {
-          if (
-            Math.abs(
-              a.y - b.y
-            ) < 25
-          ) {
-            return a.x - b.x;
-          }
-
-          return a.y - b.y;
-        }
-      );
-
-      /* =========================================================
-         9.5 CLUSTER WORDS INTO DIMENSIONS
-         ---------------------------------------------------------
-         OCR reads one dimension callout as several separate
-         words (value line + tolerance lines). Merge the words
-         that sit together so each dimension becomes ONE balloon
-         instead of 2-3.
-      ========================================================= */
-
-      finalDetected =
-        clusterDetectionsIntoDimensions(
-          finalDetected
-        );
-
-      /* =========================================================
-         10. GROUP DIMENSIONS + TOLERANCES
-         ---------------------------------------------------------
-         THIS IS THE IMPORTANT NEW PART.
-      ========================================================= */
-
-      const isCombinedTolerance = (text) => {
-        return (
-          tolerancePattern.test(text) ||
-          bilateralTolerancePattern.test(text)
-        );
-      };
-
-      const isDiameter = (text) => {
-        return diameterPattern.test(text);
-      };
-
-      const isRadius = (text) => {
-        return radiusPattern.test(text);
-      };
-
-      const isNormalDimension = (text) => {
-        return (
-          dimensionPattern.test(text) &&
-          !smallTolerancePattern.test(text)
-        );
-      };
-
-      const isFit = (text) => {
-        return fitPattern.test(text);
-      };
-
-      const isAngle = (text) => {
-        return (
-          anglePattern.test(text) ||
-          angleTolerancePattern.test(text)
-        );
-      };
-
-      const isAngularToleranceLine = (text) => {
-        return angularToleranceLinePattern.test(
-          text
-        );
-      };
-
-      const isBareFit = (text) => {
-        return bareFitPattern.test(text);
-      };
-
-      const isThread = (text) => {
-        return threadPattern.test(text);
-      };
-
-      const isDatumFeature = (text) => {
-        return datumFeaturePattern.test(text);
-      };
-
-      const isStandaloneTolerance = (text) => {
-        return smallTolerancePattern.test(
-          text
-        );
-      };
-
-      /*
-        Get numeric value from a standalone
-        tolerance.
-  
-        Examples:
-  
-        0.05
-        +0.05
-        -0.03
-      */
-
-      const getToleranceNumber = (text) => {
-        const normalized =
-          normalizeText(text);
-
-        const match =
-          normalized.match(
-            /[+-]?\s*(0?\.\d{1,3})/
-          );
-
-        if (!match) {
-          return null;
-        }
-
-        return Number(
-          match[1]
-        );
-      };
-
-      /*
-        Determine whether a tolerance is
-        positioned close enough to a dimension.
-  
-        We intentionally use BOTH:
-  
-        1. X proximity / horizontal alignment
-        2. Y proximity
-  
-        This prevents random 0.02 values
-        elsewhere in the drawing from being
-        attached to a dimension.
-      */
-
-      const isNearbyTolerance = (
-        dimension,
-        tolerance
-      ) => {
-        const dimensionCenterX =
-          dimension.x +
-          (dimension.width || 0) / 2;
-
-        const toleranceCenterX =
-          tolerance.x +
-          (tolerance.width || 0) / 2;
-
-        const xDifference =
-          Math.abs(
-            dimensionCenterX -
-            toleranceCenterX
-          );
-
-        const yDifference =
-          Math.abs(
-            dimension.y -
-            tolerance.y
-          );
-
-        /*
-          Tolerance normally appears:
-  
-          - directly above
-          - directly below
-          - or very slightly beside
-            the dimension.
-        */
-
-        const maxXDistance =
-          Math.max(
-            45,
-            (dimension.width || 20) * 2.5
-          );
-
-        const maxYDistance =
-          Math.max(
-            60,
-            (dimension.height || 12) * 4
-          );
-
-        return (
-          xDifference <=
-          maxXDistance &&
-          yDifference <=
-          maxYDistance
-        );
-      };
-
-      /*
-        First separate:
-  
-        MAIN dimensions
-        from
-        standalone tolerance numbers.
-      */
-
-      const mainDimensions = [];
-
-      const standaloneTolerances = [];
-
-      for (
-        const item of finalDetected
-      ) {
-        const text =
-          normalizeText(
-            item.text
-          );
-
-        if (
-          isCombinedTolerance(text) ||
-          isDiameter(text) ||
-          isRadius(text) ||
-          isNormalDimension(text) ||
-          isFit(text) ||
-          isAngle(text) ||
-          isAngularToleranceLine(text) ||
-          isBareFit(text) ||
-          isThread(text) ||
-          isDatumFeature(text)
-        ) {
-          mainDimensions.push({
-            ...item,
-            text
-          });
-
-          continue;
-        }
-
-        if (
-          isStandaloneTolerance(text)
-        ) {
-          standaloneTolerances.push({
-            ...item,
-            text
-          });
-        }
-      }
-
-      /*
-        Each grouped item will represent
-        ONE final balloon.
-      */
-
-      const groupedDimensions = [];
-
-      /*
-        Keep track of tolerance detections
-        already consumed by a dimension.
-      */
-
-      const consumedToleranceIndexes =
-        new Set();
-
-      /* =========================================================
-         PROCESS EACH MAIN DIMENSION
-      ========================================================= */
-
-      for (
-        const dimension of mainDimensions
-      ) {
-        const text =
-          normalizeText(
-            dimension.text
-          );
-
-        /*
-          Already combined tolerance.
-  
-          Example:
-  
-          25 ±0.05
-          25 +0.05/-0.03
-        */
-
-        let plusTolerance =
-          '0.00';
-
-        let minusTolerance =
-          '0.00';
-
-        let cleanedValue =
-          text;
-
-        const plusMinusMatch =
-          text.match(
-            /^\s*(?:A~\s*|Ø\s*)?(\d+(?:\.\d+)?)(?:\s*[A-Za-z0-9]+)*\s*(?:A|±|\+\/-|\+ -)\s*(\d+(?:\.\d+)?)/i
-          );
-
-        const bilateralMatch =
-          text.match(
-            /^\s*(?:Ø\s*)?(\d+(?:\.\d+)?)(?:\s*[A-Za-z0-9]+)*\s*\+(\d+(?:\.\d+)?)\s*\/\s*-(\d+(?:\.\d+)?)/i
-          );
-
-        if (
-          plusMinusMatch
-        ) {
-          cleanedValue =
-            plusMinusMatch[1];
-
-          plusTolerance =
-            plusMinusMatch[2];
-
-          minusTolerance =
-            plusMinusMatch[2];
-        }
-
-        if (
-          bilateralMatch
-        ) {
-          cleanedValue =
-            bilateralMatch[1];
-
-          plusTolerance =
-            bilateralMatch[2];
-
-          minusTolerance =
-            bilateralMatch[3];
-        }
-
-        /*
-          Diameter.
-        */
-
-        const diameterMatch =
-          text.match(
-            /Ø\s*(\d+(?:\.\d+)?)/i
-          );
-
-        if (
-          diameterMatch &&
-          !plusMinusMatch &&
-          !bilateralMatch
-        ) {
-          cleanedValue =
-            diameterMatch[1];
-        }
-
-        /*
-          Radius.
-        */
-
-        const radiusMatch =
-          text.match(
-            /R\s*(\d+(?:\.\d+)?)/i
-          );
-
-        if (
-          radiusMatch &&
-          !plusMinusMatch &&
-          !bilateralMatch
-        ) {
-          cleanedValue =
-            radiusMatch[1];
-        }
-
-        /*
-          Normal numeric dimension.
-        */
-
-        const numericMatch =
-          text.match(
-            /^\s*(\d+(?:\.\d+)?)\s*(?:mm|in|inch|inches)?\s*$/i
-          );
-
-        if (
-          numericMatch &&
-          !plusMinusMatch &&
-          !bilateralMatch
-        ) {
-          cleanedValue =
-            numericMatch[1];
-        }
-
-        /*
-          Hole / fit callout such as "25 H7" or "Ø 25 H7/g6".
-          Fall back to the first number.
-        */
-
-        if (
-          !plusMinusMatch &&
-          !bilateralMatch &&
-          !numericMatch &&
-          !diameterMatch &&
-          !radiusMatch
-        ) {
-          const firstNumber =
-            text.match(
-              /^\s*(?:(?:Ø|R|SØ|SR|M|∅|Q|O|o|0|↧|v|V|⌴|U|u|⌵|x|X|×|\d+\s*[xX×])\s*)*(\d+(?:\.\d+)?)/
-            );
-
-          if (firstNumber) {
-            cleanedValue =
-              firstNumber[1];
-          }
-        }
-
-        /*
-          -------------------------------------------------------
-          FIND NEARBY STANDALONE TOLERANCES
-          -------------------------------------------------------
-        */
-
-        const nearbyTolerances = [];
-
-        standaloneTolerances.forEach(
-          (
-            tolerance,
-            toleranceIndex
-          ) => {
-            if (
-              consumedToleranceIndexes.has(
-                toleranceIndex
-              )
-            ) {
-              return;
-            }
-
-            if (
-              !isNearbyTolerance(
-                dimension,
-                tolerance
-              )
-            ) {
-              return;
-            }
-
-            nearbyTolerances.push({
-              tolerance,
-              toleranceIndex
-            });
-          }
-        );
-
-        /*
-          -------------------------------------------------------
-          SORT NEARBY TOLERANCES
-          -------------------------------------------------------
-  
-          We sort vertically.
-  
-          Engineering drawings commonly
-          represent unequal tolerance as:
-  
-                16
-               0.05
-               0.03
-  
-          Therefore:
-  
-          TOP    = PLUS
-          BOTTOM = MINUS
-        */
-
-        nearbyTolerances.sort(
-          (a, b) => {
-            return (
-              a.tolerance.y -
-              b.tolerance.y
-            );
-          }
-        );
-
-        /*
-          Only use the closest tolerance
-          values.
-  
-          This prevents unrelated 0.02 / 0.05
-          values from being attached.
-        */
-
-        const usableTolerances =
-          nearbyTolerances.slice(
-            0,
-            2
-          );
-
-        /*
-          -------------------------------------------------------
-          ONE TOLERANCE
-          -------------------------------------------------------
-  
-          Example:
-  
-          25
-          0.05
-  
-          Treat as ±0.05.
-        */
-
-        if (
-          usableTolerances.length === 1
-        ) {
-          const tolerance =
-            usableTolerances[0];
-
-          const toleranceValue =
-            getToleranceNumber(
-              tolerance.tolerance.text
-            );
-
-          if (
-            Number.isFinite(
-              toleranceValue
-            )
-          ) {
-            plusTolerance =
-              toleranceValue.toFixed(3);
-
-            minusTolerance =
-              toleranceValue.toFixed(3);
-
-            consumedToleranceIndexes.add(
-              tolerance.toleranceIndex
-            );
-          }
-        }
-
-        /*
-          -------------------------------------------------------
-          TWO TOLERANCES
-          -------------------------------------------------------
-  
-          Example:
-  
-               16
-               0.05
-               0.03
-  
-          TOP    = +0.05
-          BOTTOM = -0.03
-        */
-
-        if (
-          usableTolerances.length >= 2
-        ) {
-          const first =
-            usableTolerances[0];
-
-          const second =
-            usableTolerances[1];
-
-          const firstValue =
-            getToleranceNumber(
-              first.tolerance.text
-            );
-
-          const secondValue =
-            getToleranceNumber(
-              second.tolerance.text
-            );
-
-          if (
-            Number.isFinite(
-              firstValue
-            ) &&
-            Number.isFinite(
-              secondValue
-            )
-          ) {
-            /*
-              If explicit signs exist,
-              respect them.
-            */
-
-            const firstHasMinus =
-              /^-/.test(
-                normalizeText(
-                  first.tolerance.text
-                )
-              );
-
-            const firstHasPlus =
-              /^\+/.test(
-                normalizeText(
-                  first.tolerance.text
-                )
-              );
-
-            const secondHasMinus =
-              /^-/.test(
-                normalizeText(
-                  second.tolerance.text
-                )
-              );
-
-            const secondHasPlus =
-              /^\+/.test(
-                normalizeText(
-                  second.tolerance.text
-                )
-              );
-
-            if (
-              firstHasPlus &&
-              secondHasMinus
-            ) {
-              plusTolerance =
-                firstValue.toFixed(3);
-
-              minusTolerance =
-                secondValue.toFixed(3);
-            } else if (
-              firstHasMinus &&
-              secondHasPlus
-            ) {
-              plusTolerance =
-                secondValue.toFixed(3);
-
-              minusTolerance =
-                firstValue.toFixed(3);
-            } else {
-              /*
-                No signs visible.
-  
-                Use engineering drawing
-                convention:
-  
-                TOP = PLUS
-                BOTTOM = MINUS
-              */
-
-              plusTolerance =
-                firstValue.toFixed(3);
-
-              minusTolerance =
-                secondValue.toFixed(3);
-            }
-
-            consumedToleranceIndexes.add(
-              first.toleranceIndex
-            );
-
-            consumedToleranceIndexes.add(
-              second.toleranceIndex
-            );
-          }
-        }
-
-        /*
-          -------------------------------------------------------
-          DETERMINE TYPE
-          -------------------------------------------------------
-        */
-
-        let type =
-          'Dimension';
-
-        if (
-          /^\s*Ø/.test(text)
-        ) {
-          type =
-            'Diameter';
-        } else if (
-          /^\s*R\s*\d/.test(text)
-        ) {
-          type =
-            'Radius';
-        }
-
-        /*
-          -------------------------------------------------------
-          FINAL VALUE
-          -------------------------------------------------------
-        */
-
-        let prefix = '';
-        const prefixMatch = text.match(/^\s*(Ø|R|SØ|SR|M|∅)/i);
-        if (prefixMatch) {
-          prefix = prefixMatch[1].toUpperCase();
-        }
-        const value = String(cleanedValue).toUpperCase().startsWith(prefix)
-          ? cleanedValue
-          : prefix + cleanedValue;
-
-        /*
-          -------------------------------------------------------
-          LIMIT CALCULATION
-          -------------------------------------------------------
-        */
-
-        const numericValue =
-          Number(value);
-
-        const plus =
-          Number(
-            plusTolerance
-          );
-
-        const minus =
-          Number(
-            minusTolerance
-          );
-
-        let upperLimit =
-          '0.00';
-
-        let lowerLimit =
-          '0.00';
-
-        if (
-          Number.isFinite(
-            numericValue
-          )
-        ) {
-          upperLimit =
-            (
-              numericValue +
-              (
-                Number.isFinite(
-                  plus
-                )
-                  ? plus
-                  : 0
-              )
-            ).toFixed(3);
-
-          lowerLimit =
-            (
-              numericValue -
-              (
-                Number.isFinite(
-                  minus
-                )
-                  ? minus
-                  : 0
-              )
-            ).toFixed(3);
-        }
-
-        /*
-          -------------------------------------------------------
-          BUILD SPECIFICATION
-          -------------------------------------------------------
-        */
-
-        let specification =
-          text;
-
-        /*
-          If tolerances were detected separately,
-          create a combined specification.
-        */
-
-        if (
-          plusTolerance !== '0.00' ||
-          minusTolerance !== '0.00'
-        ) {
-          if (
-            plusTolerance ===
-            minusTolerance
-          ) {
-            specification =
-              `${value} ±${plusTolerance}`;
-          } else {
-            specification =
-              `${value} +${plusTolerance}/-${minusTolerance}`;
-          }
-        }
-
-        groupedDimensions.push({
-          ...dimension,
-
-          text,
-
-          value,
-
-          type,
-
-          plusTolerance,
-
-          minusTolerance,
-
-          upperLimit,
-
-          lowerLimit,
-
-          specification
-        });
-      }
-
-      /* =========================================================
-         IMPORTANT:
-         Tolerance-only detections are NOT included.
-  
-         They were consumed by their parent dimension.
-      ========================================================= */
-
-      const limited =
-        groupedDimensions.slice(
-          0,
-          80
-        );
+      let limited = enhanceDetections(finalDetected, baseViewport.width * displayScale, baseViewport.height * displayScale);
+      limited = contextualFilter(limited, allTextItems, baseViewport.width * displayScale, baseViewport.height * displayScale);
 
       /* =========================================================
          11. CHECK GROUPED RESULT
@@ -5901,6 +4952,17 @@ export default function DrawingWorkspace() {
                                 <polygon
                                   points={`${ax},${ay} ${ax - head * Math.cos(angle - 0.35)},${ay - head * Math.sin(angle - 0.35)} ${ax - head * Math.cos(angle + 0.35)},${ay - head * Math.sin(angle + 0.35)}`}
                                   fill="#dc2626"
+                                />
+
+                                {/* draggable anchor tip */}
+                                <circle
+                                  cx={ax}
+                                  cy={ay}
+                                  r={8}
+                                  fill="#3b82f6"
+                                  opacity="0.8"
+                                  className="cursor-move pointer-events-auto"
+                                  onPointerDown={(e) => handleAnchorPointerDown(e, balloon)}
                                 />
                               </g>
                             );
