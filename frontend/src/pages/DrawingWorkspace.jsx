@@ -1010,7 +1010,7 @@ export default function DrawingWorkspace() {
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'italic');
       pdf.setTextColor(220, 38, 38); // Red text
-      pdf.text('ballooning is done by vyavasta software', pageWidthMm / 2, pageHeightMm - 5, { align: 'center' });
+      pdf.text('ballooning is done by vyavasta software', pageWidthMm - 10, pageHeightMm - 5, { align: 'right' });
       pdf.setTextColor(0, 0, 0); // Reset to black
 
 
