@@ -437,15 +437,33 @@ export default function DrawingWorkspace() {
   const [focusedField, setFocusedField] = useState('specification');
 
   const insertSymbol = (sym) => {
+    const activeEl = document.activeElement;
+    const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+    const start = isInput && typeof activeEl.selectionStart === 'number' ? activeEl.selectionStart : null;
+    const end = isInput && typeof activeEl.selectionEnd === 'number' ? activeEl.selectionEnd : null;
+
     if (focusedField === 'currentBalloonNo') {
-      setCurrentBalloonNo(prev => prev + sym);
+      setCurrentBalloonNo(prev => {
+        const val = prev || '';
+        if (start !== null) {
+          setTimeout(() => activeEl.setSelectionRange(start + sym.length, start + sym.length), 0);
+          return val.substring(0, start) + sym + val.substring(end);
+        }
+        return val + sym;
+      });
       return;
     }
     if (!editData) return;
-    setEditData((prev) => prev ? {
-      ...prev,
-      [focusedField]: (prev[focusedField] || '') + sym
-    } : prev);
+    setEditData((prev) => {
+      if (!prev) return prev;
+      const val = prev[focusedField] || '';
+      let newVal = val + sym;
+      if (start !== null) {
+        newVal = val.substring(0, start) + sym + val.substring(end);
+        setTimeout(() => activeEl.setSelectionRange(start + sym.length, start + sym.length), 0);
+      }
+      return { ...prev, [focusedField]: newVal };
+    });
   };
 
   const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
