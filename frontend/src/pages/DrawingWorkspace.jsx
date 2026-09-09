@@ -1008,7 +1008,7 @@ export default function DrawingWorkspace() {
 
       // Add declaration
       pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'italic');
+      pdf.setFont('times', 'normal');
       pdf.setTextColor(220, 38, 38); // Red text
       pdf.text('ballooning is done by vyavasta software', pageWidthMm - 10, pageHeightMm - 5, { align: 'right' });
       pdf.setTextColor(0, 0, 0); // Reset to black
@@ -5232,9 +5232,7 @@ const extractOcrWords = (data) => {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                Dimension No (mm)
-              </label>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Dimensions No</label>
 
               <input
                 type="text"
@@ -5257,9 +5255,7 @@ const extractOcrWords = (data) => {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                Upper Tolerance (+) mm
-              </label>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Upper Tolerance</label>
 
               <input
                 type="text"
@@ -5282,9 +5278,7 @@ const extractOcrWords = (data) => {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                Lower Tolerance (-) mm
-              </label>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Lower Tolerance</label>
 
               <input
                 type="text"
@@ -5444,9 +5438,9 @@ const extractOcrWords = (data) => {
                       <tr>
                         <th className="px-4 py-3">Balloon No</th>
                         <th className="px-4 py-3">Description</th>
-                        <th className="px-4 py-3">Dimension No (mm)</th>
-                        <th className="px-4 py-3">Upper Tolerance (+) mm</th>
-                        <th className="px-4 py-3">Lower Tolerance (-) mm</th>
+                        <th className="px-4 py-3">Dimensions No</th>
+                        <th className="px-4 py-3">Upper Tolerance</th>
+                        <th className="px-4 py-3">Lower Tolerance</th>
                       </tr>
                     </thead>
                     <tbody>
