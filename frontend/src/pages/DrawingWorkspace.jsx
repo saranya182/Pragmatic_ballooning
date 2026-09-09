@@ -397,6 +397,8 @@ export default function DrawingWorkspace() {
 
   const [addScanning, setAddScanning] = useState(false);
   const [selectRect, setSelectRect] = useState(null);
+  const [roiRect, setRoiRect] = useState(null);
+  const roiSelectRef = useRef(null);
 
   const [zoom, setZoom] = useState(1);
   const [renderScale, setRenderScale] = useState(1);
@@ -876,11 +878,11 @@ export default function DrawingWorkspace() {
           (balloon.y ?? 0) * ratio;
 
         const ax =
-          (balloon.anchorX ?? x + 25) *
+          (balloon.anchorX ?? x + 12) *
           ratio;
 
         const ay =
-          (balloon.anchorY ?? y + 25) *
+          (balloon.anchorY ?? y + 12) *
           ratio;
 
         // Direction from the balloon TOWARDS the value
@@ -894,7 +896,7 @@ export default function DrawingWorkspace() {
         const uy = dy / dist;
 
         // Balloon marker radius (matches the 24px on-screen circle)
-        const radius = 12 * ratio;
+        const radius = 9 * ratio;
         const head = 7 * ratio;
 
         const startX =
@@ -904,7 +906,7 @@ export default function DrawingWorkspace() {
           y + uy * radius;
 
         // Leader line
-        context.strokeStyle = '#dc2626';
+        context.strokeStyle = 'rgba(220, 38, 38, 0.7)';
         context.lineWidth = Math.max(
           1.5 * ratio,
           1.5
@@ -919,7 +921,7 @@ export default function DrawingWorkspace() {
         const angle =
           Math.atan2(uy, ux);
 
-        context.fillStyle = '#dc2626';
+        context.fillStyle = 'rgba(220, 38, 38, 0.7)';
         context.beginPath();
         context.moveTo(ax, ay);
         context.lineTo(
@@ -1248,100 +1250,72 @@ export default function DrawingWorkspace() {
   };
 
   const handleAddPointerDown = (event) => {
-    if (
-      mode !== 'manual' ||
-      !canvasRef.current
-    ) {
-      return;
+    if (!canvasRef.current) return;
+    if (event.target.closest('.balloon-marker')) return;
+
+    if (mode === 'manual') {
+      const point = clientToCanvasPoint(event);
+      addSelectRef.current = { startX: point.x, startY: point.y };
+      setSelectRect({ x1: point.x, y1: point.y, x2: point.x, y2: point.y });
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } else if (mode === 'select_area') {
+      const point = clientToCanvasPoint(event);
+      roiSelectRef.current = { startX: point.x, startY: point.y };
+      setRoiRect({ x1: point.x, y1: point.y, x2: point.x, y2: point.y });
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
     }
-
-    if (event.target.closest('.balloon-marker')) {
-      return;
-    }
-
-    const point = clientToCanvasPoint(event);
-
-    addSelectRef.current = {
-      startX: point.x,
-      startY: point.y
-    };
-
-    setSelectRect({
-      x1: point.x,
-      y1: point.y,
-      x2: point.x,
-      y2: point.y
-    });
-
-    event.preventDefault();
-
-    event.currentTarget.setPointerCapture?.(
-      event.pointerId
-    );
   };
 
   const handleAddPointerMove = (event) => {
-    if (
-      mode !== 'manual' ||
-      !addSelectRef.current ||
-      !canvasRef.current
-    ) {
-      return;
+    if (!canvasRef.current) return;
+    if (mode === 'manual' && addSelectRef.current) {
+      const point = clientToCanvasPoint(event);
+      const start = addSelectRef.current;
+      setSelectRect({
+        x1: Math.min(start.startX, point.x),
+        y1: Math.min(start.startY, point.y),
+        x2: Math.max(start.startX, point.x),
+        y2: Math.max(start.startY, point.y)
+      });
+    } else if (mode === 'select_area' && roiSelectRef.current) {
+      const point = clientToCanvasPoint(event);
+      const start = roiSelectRef.current;
+      setRoiRect({
+        x1: Math.min(start.startX, point.x),
+        y1: Math.min(start.startY, point.y),
+        x2: Math.max(start.startX, point.x),
+        y2: Math.max(start.startY, point.y)
+      });
     }
-
-    const point = clientToCanvasPoint(event);
-    const start = addSelectRef.current;
-
-    setSelectRect({
-      x1: Math.min(start.startX, point.x),
-      y1: Math.min(start.startY, point.y),
-      x2: Math.max(start.startX, point.x),
-      y2: Math.max(start.startY, point.y)
-    });
   };
 
   const handleAddPointerUp = async (event) => {
-    if (
-      mode !== 'manual' ||
-      !addSelectRef.current ||
-      !canvasRef.current
-    ) {
-      return;
-    }
-
-    const start = addSelectRef.current;
-
-    addSelectRef.current = null;
-
-    const point = clientToCanvasPoint(event);
-
-    let rect = {
-      x1: Math.min(start.startX, point.x),
-      y1: Math.min(start.startY, point.y),
-      x2: Math.max(start.startX, point.x),
-      y2: Math.max(start.startY, point.y)
-    };
-
-    setSelectRect(null);
-
-    // A tiny box is treated as a click: scan a small area
-    // around the click point instead.
-    const width = rect.x2 - rect.x1;
-    const height = rect.y2 - rect.y1;
-
-    if (width < 15 && height < 15) {
-      const cx = (rect.x1 + rect.x2) / 2;
-      const cy = (rect.y1 + rect.y2) / 2;
-
-      rect = {
-        x1: cx - 70,
-        y1: cy - 70,
-        x2: cx + 70,
-        y2: cy + 70
+    if (!canvasRef.current) return;
+    if (mode === 'manual' && addSelectRef.current) {
+      const start = addSelectRef.current;
+      addSelectRef.current = null;
+      const point = clientToCanvasPoint(event);
+      let rect = {
+        x1: Math.min(start.startX, point.x),
+        y1: Math.min(start.startY, point.y),
+        x2: Math.max(start.startX, point.x),
+        y2: Math.max(start.startY, point.y)
       };
+      setSelectRect(null);
+      const width = rect.x2 - rect.x1;
+      const height = rect.y2 - rect.y1;
+      if (width < 15 && height < 15) {
+        const cx = (rect.x1 + rect.x2) / 2;
+        const cy = (rect.y1 + rect.y2) / 2;
+        rect = { x1: cx - 70, y1: cy - 70, x2: cx + 70, y2: cy + 70 };
+      }
+      await addDimensionAtRect(rect);
+    } else if (mode === 'select_area' && roiSelectRef.current) {
+      roiSelectRef.current = null;
+      setMode('none');
     }
-
-    await addDimensionAtRect(rect);
   };
   /* =========================================================
      DELETE SINGLE BALLOON
@@ -1875,8 +1849,8 @@ export default function DrawingWorkspace() {
         if (balloon._id !== drag.balloonId) return balloon;
 
         if (drag.isAnchorDrag) {
-          let newAx = (balloon.anchorX ?? balloon.x + 25) + dx;
-          let newAy = (balloon.anchorY ?? balloon.y + 25) + dy;
+          let newAx = (balloon.anchorX ?? balloon.x + 12) + dx;
+          let newAy = (balloon.anchorY ?? balloon.y + 12) + dy;
           newAx = Math.max(0, Math.min(canvas.width, newAx));
           newAy = Math.max(0, Math.min(canvas.height, newAy));
           return { ...balloon, anchorX: newAx, anchorY: newAy };
@@ -1933,11 +1907,11 @@ export default function DrawingWorkspace() {
 
           const readX =
             balloon.anchorX ??
-            balloon.x + 25;
+            balloon.x + 12;
 
           const readY =
             balloon.anchorY ??
-            balloon.y + 25;
+            balloon.y + 12;
 
           fetchedDimension =
             await readDimensionAtPoint(
@@ -3472,9 +3446,9 @@ const extractOcrWords = (data) => {
       return;
     }
 
-    if (autoDetectDoneRef.current) {
+    if (autoDetectDoneRef.current && !roiRect) {
       setMessage(
-        'Detection already complete. Use "Clear All Ballooning" if you want to run it again.'
+        'Detection already complete. Select an area first (using "Select Area") to detect a different part, or use "Clear All Ballooning" to start over.'
       );
       return;
     }
@@ -3873,7 +3847,21 @@ const extractOcrWords = (data) => {
         return;
       }
 
-      let limited = enhanceDetections(finalDetected, baseViewport.width * displayScale, baseViewport.height * displayScale);
+      if (roiRect) {
+          const minX = Math.min(roiRect.x1, roiRect.x2);
+          const maxX = Math.max(roiRect.x1, roiRect.x2);
+          const minY = Math.min(roiRect.y1, roiRect.y2);
+          const maxY = Math.max(roiRect.y1, roiRect.y2);
+
+          finalDetected = finalDetected.filter(item => {
+             const centerX = item.x + item.width / 2;
+             const centerY = item.y + item.height / 2;
+             return centerX >= minX && centerX <= maxX &&
+                    centerY >= minY && centerY <= maxY;
+          });
+        }
+
+        let limited = enhanceDetections(finalDetected, baseViewport.width * displayScale, baseViewport.height * displayScale);
       limited = contextualFilter(limited, allTextItems, baseViewport.width * displayScale, baseViewport.height * displayScale);
 
       /* =========================================================
@@ -4369,7 +4357,23 @@ const extractOcrWords = (data) => {
 
         <div className="flex flex-wrap items-center gap-2">
 
-          {/* ADD DIMENSION (toggle, shortcut: A) */}
+          {/* SELECT AREA */}
+            <button
+              className={`rounded border px-3 py-2 text-sm flex items-center gap-1 ${mode === 'select_area' ? 'bg-yellow-600 text-white' : ''}`}
+              onClick={() => {
+                if (mode === 'select_area') {
+                  setMode('none');
+                } else {
+                  setMode('select_area');
+                  setRoiRect(null); // Clear previous area when entering mode
+                }
+              }}
+            >
+              <Maximize size={15} />
+              {mode === 'select_area' ? 'Draw Area...' : (roiRect ? 'Area Selected (Click to Reset)' : 'Select Area')}
+            </button>
+            
+            {/* ADD DIMENSION (toggle, shortcut: A) */}
 
           <button
             className={`rounded border px-3 py-2 text-sm flex items-center gap-1 ${mode === 'manual'
@@ -4879,10 +4883,10 @@ const extractOcrWords = (data) => {
                               balloon.y ?? 0;
                             const ax =
                               balloon.anchorX ??
-                              x + 25;
+                              x + 12;
                             const ay =
                               balloon.anchorY ??
-                              y + 25;
+                              y + 12;
 
                             /*
                               Direction from the balloon
@@ -4912,7 +4916,7 @@ const extractOcrWords = (data) => {
                               (h-6 circle => 12px).
                             */
 
-                            const R = 12;
+                            const R = 10;
                             const head = 7;
 
                             /*
@@ -4942,7 +4946,7 @@ const extractOcrWords = (data) => {
                                   y1={startY}
                                   x2={ax}
                                   y2={ay}
-                                  stroke="#dc2626"
+                                  stroke="rgba(220, 38, 38, 0.7)"
                                   strokeWidth="1.5"
                                   strokeLinecap="round"
                                 />
@@ -4951,7 +4955,7 @@ const extractOcrWords = (data) => {
                                     the measurement */}
                                 <polygon
                                   points={`${ax},${ay} ${ax - head * Math.cos(angle - 0.35)},${ay - head * Math.sin(angle - 0.35)} ${ax - head * Math.cos(angle + 0.35)},${ay - head * Math.sin(angle + 0.35)}`}
-                                  fill="#dc2626"
+                                  fill="rgba(220, 38, 38, 0.7)"
                                 />
 
                                 {/* draggable anchor tip */}
@@ -5025,6 +5029,20 @@ const extractOcrWords = (data) => {
 
                         )
                       )}
+
+                    {/* ROI RECTANGLE */}
+                    {roiRect ? (
+                      <div
+                        className="absolute border-2 border-yellow-500 bg-yellow-400/20"
+                        style={{
+                          left: Math.min(roiRect.x1, roiRect.x2),
+                          top: Math.min(roiRect.y1, roiRect.y2),
+                          width: Math.abs(roiRect.x2 - roiRect.x1),
+                          height: Math.abs(roiRect.y2 - roiRect.y1),
+                          pointerEvents: 'none'
+                        }}
+                      />
+                    ) : null}
 
                     {/* ADD DIMENSION SELECTION RECTANGLE */}
 
