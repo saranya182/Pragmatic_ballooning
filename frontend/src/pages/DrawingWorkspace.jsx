@@ -1006,6 +1006,14 @@ export default function DrawingWorkspace() {
         pageHeightMm
       );
 
+      // Add declaration
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'italic');
+      pdf.setTextColor(220, 38, 38); // Red text
+      pdf.text('ballooning is done by vyavasta software', pageWidthMm / 2, pageHeightMm - 5, { align: 'center' });
+      pdf.setTextColor(0, 0, 0); // Reset to black
+
+
       // Add Characteristics Table as new page
       pdf.addPage('a4', 'portrait');
       pdf.setFontSize(16);
@@ -1019,16 +1027,15 @@ export default function DrawingWorkspace() {
 
       const tableData = sortedCharacteristics.map((char) => [
         String(char.number || ''),
-        String(char.type || 'Dimension'),
         String(char.specification || ''),
         String(char.value || ''),
-        String(char.plusTolerance || '0.00'),
-        String(char.minusTolerance || '0.00')
+        String(char.plusTolerance || ''),
+        String(char.minusTolerance || '')
       ]);
 
       autoTable(pdf, {
         startY: 25,
-        head: [['No.', 'Type', 'Description', 'Dimension No', '+ Tol', '- Tol']],
+        head: [['Balloon No', 'Description', 'Dimensions No', 'Upper Tolerance', 'Lower Tolerance']],
         body: tableData,
         theme: 'grid',
         headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255], fontStyle: 'bold' },
@@ -1771,9 +1778,9 @@ export default function DrawingWorkspace() {
       .map(c => ({
         'Balloon No': c.number || '',
         'Description': c.specification || '',
-        'Dimension No (mm)': c.value || '',
-        'Upper Tolerance (+) mm': c.plusTolerance || '',
-        'Lower Tolerance (-) mm': c.minusTolerance || ''
+        'Dimensions No': c.value || '',
+        'Upper Tolerance': c.plusTolerance || '',
+        'Lower Tolerance': c.minusTolerance || ''
       }));
 
     const worksheet = XLSX.utils.json_to_sheet(data);
