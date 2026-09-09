@@ -367,6 +367,7 @@ const clusterDetectionsIntoDimensions = (detections) => {
 
 export default function DrawingWorkspace() {
   const { id } = useParams();
+  const dRatio = window.devicePixelRatio || 2;
 
   const canvasRef = useRef(null);
   const pdfContainerRef = useRef(null);
@@ -779,17 +780,17 @@ export default function DrawingWorkspace() {
 
     const viewport =
       pdfPage.getViewport({
-        scale: finalScale
+        scale: finalScale * dRatio
       });
 
     canvas.width = viewport.width;
     canvas.height = viewport.height;
 
     canvas.style.width =
-      `${viewport.width}px`;
+      `${viewport.width / dRatio}px`;
 
     canvas.style.height =
-      `${viewport.height}px`;
+      `${viewport.height / dRatio}px`;
 
     const renderContext = {
       canvasContext: context,
@@ -5017,8 +5018,8 @@ const extractOcrWords = (data) => {
                             key={balloon._id}
                             className="absolute pointer-events-auto balloon-marker cursor-move select-none"
                             style={{
-                              left: balloon.x,
-                              top: balloon.y,
+                              left: balloon.x / dRatio,
+                              top: balloon.y / dRatio,
                               transform:
                                 'translate(-50%, -50%)',
                               touchAction: 'none'
@@ -5060,10 +5061,10 @@ const extractOcrWords = (data) => {
                       <div
                         className="absolute border-2 border-yellow-500 bg-yellow-400/20"
                         style={{
-                          left: Math.min(roiRect.x1, roiRect.x2),
-                          top: Math.min(roiRect.y1, roiRect.y2),
-                          width: Math.abs(roiRect.x2 - roiRect.x1),
-                          height: Math.abs(roiRect.y2 - roiRect.y1),
+                          left: Math.min(roiRect.x1, roiRect.x2) / dRatio,
+                          top: Math.min(roiRect.y1, roiRect.y2) / dRatio,
+                          width: Math.abs(roiRect.x2 - roiRect.x1) / dRatio,
+                          height: Math.abs(roiRect.y2 - roiRect.y1) / dRatio,
                           pointerEvents: 'none'
                         }}
                       />
@@ -5076,14 +5077,10 @@ const extractOcrWords = (data) => {
                       <div
                         className="absolute border-2 border-blue-500 bg-blue-400/20"
                         style={{
-                          left: selectRect.x1,
-                          top: selectRect.y1,
-                          width:
-                            selectRect.x2 -
-                            selectRect.x1,
-                          height:
-                            selectRect.y2 -
-                            selectRect.y1
+                          left: selectRect.x1 / dRatio,
+                            top: selectRect.y1 / dRatio,
+                            width: (selectRect.x2 - selectRect.x1) / dRatio,
+                            height: (selectRect.y2 - selectRect.y1) / dRatio
                         }}
                       />
                     ) : null}
