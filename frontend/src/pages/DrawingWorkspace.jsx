@@ -1029,7 +1029,7 @@ export default function DrawingWorkspace() {
       pdf.setFontSize(11);
       pdf.setFont('times', 'normal');
       pdf.setTextColor(0, 0, 0); // Black text
-      pdf.text('ballooning is done by vyavasta software', pageWidthMm - 10, pageHeightMm - 5, { align: 'right' });
+      pdf.text('Ballooning generated using VYAVASTHA Software.', pageWidthMm - 10, pageHeightMm - 5, { align: 'right' });
       pdf.setTextColor(0, 0, 0); // Reset to black
 
 
