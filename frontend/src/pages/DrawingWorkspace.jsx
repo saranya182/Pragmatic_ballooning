@@ -2666,7 +2666,7 @@ const extractOcrWords = (data) => {
 
       let words = [];
       if (!ocrWorkerRef.current) {
-        ocrWorkerRef.current = await createWorker('eng');
+        ocrWorkerRef.current = await createWorker('eng', 1, { workerPath: '/tesseract/worker.min.js', corePath: '/tesseract/tesseract-core.wasm.js', langPath: '/tesseract' });
       }
       let { data } = await ocrWorkerRef.current.recognize(crop, {}, { blocks: true });
       words = extractOcrWords(data).map(w => ({
@@ -3797,7 +3797,7 @@ const extractOcrWords = (data) => {
           await pdfPage.render({ canvasContext: ocrContext, viewport: ocrViewport }).promise;
 
           if (!ocrWorkerRef.current) {
-            ocrWorkerRef.current = await createWorker('eng');
+            ocrWorkerRef.current = await createWorker('eng', 1, { workerPath: '/tesseract/worker.min.js', corePath: '/tesseract/tesseract-core.wasm.js', langPath: '/tesseract' });
             await ocrWorkerRef.current.setParameters({
               tessedit_pageseg_mode: 11,
               tessedit_char_whitelist: '0123456789.+-±ØRMDx°Hh ',
