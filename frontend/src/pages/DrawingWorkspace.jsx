@@ -1332,10 +1332,10 @@ export default function DrawingWorkspace() {
       setSelectRect(null);
       const width = rect.x2 - rect.x1;
       const height = rect.y2 - rect.y1;
-      if (width < 15 && height < 15) {
+      if (width < 5 && height < 5) {
         const cx = (rect.x1 + rect.x2) / 2;
         const cy = (rect.y1 + rect.y2) / 2;
-        rect = { x1: cx - 70, y1: cy - 70, x2: cx + 70, y2: cy + 70 };
+        rect = { x1: cx - 25, y1: cy - 25, x2: cx + 25, y2: cy + 25 };
       }
       await addDimensionAtRect(rect);
     } else if (mode === 'select_area' && roiSelectRef.current) {
@@ -2597,7 +2597,7 @@ const extractOcrWords = (data) => {
           baseViewport.width;
       }
 
-      const ocrScale = 2;
+      const ocrScale = 3.5;
 
       const viewport =
         pdfPage.getViewport({
@@ -2624,7 +2624,7 @@ const extractOcrWords = (data) => {
         viewport
       }).promise;
 
-      const margin = 60;
+      const margin = 10;
       const ratio = ocrScale / displayScale;
 
       const sx =
@@ -3786,7 +3786,7 @@ const extractOcrWords = (data) => {
         setMessage('Scanning vector shapes and vertical text...');
 
         try {
-          const ocrScale = 1.5;
+          const ocrScale = 2.5;
           const ocrViewport = pdfPage.getViewport({ scale: ocrScale });
           const ocrCanvas = document.createElement('canvas');
           const ocrContext = ocrCanvas.getContext('2d');
