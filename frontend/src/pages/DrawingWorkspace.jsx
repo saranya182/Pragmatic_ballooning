@@ -926,7 +926,7 @@ export default function DrawingWorkspace() {
           y + uy * radius;
 
         // Leader line
-        context.strokeStyle = 'rgba(220, 38, 38, 0.4)';
+        context.strokeStyle = 'rgba(127, 29, 29, 0.7)';
         context.lineWidth = Math.max(
           1.5 * ratio,
           1.5
@@ -941,7 +941,7 @@ export default function DrawingWorkspace() {
         const angle =
           Math.atan2(uy, ux);
 
-        context.fillStyle = 'rgba(220, 38, 38, 0.4)';
+        context.fillStyle = 'rgba(127, 29, 29, 0.7)';
         context.beginPath();
         context.moveTo(ax, ay);
         context.lineTo(
@@ -964,7 +964,9 @@ export default function DrawingWorkspace() {
         context.fill();
 
         // Balloon circle
-        context.fillStyle = 'rgba(239, 68, 68, 0.4)';
+        context.fillStyle = 'rgba(127, 29, 29, 0.6)';
+        context.strokeStyle = '#ef4444';
+        context.lineWidth = 1.5;
         context.beginPath();
         context.arc(
           x,
@@ -1164,8 +1166,8 @@ export default function DrawingWorkspace() {
       // place the balloon away from it.
       anchorX = detected.centerX;
       anchorY = detected.centerY;
-      balloonX = Math.max(0, anchorX + 15);
-      balloonY = Math.max(0, anchorY - 15);
+      balloonX = Math.max(0, anchorX + 25);
+      balloonY = Math.max(0, anchorY - 25);
 
       const nextNumber = getNextBalloonNumber();
 
@@ -1924,170 +1926,31 @@ export default function DrawingWorkspace() {
           the characteristic table.
         */
 
-        let fetchedDimension =
-          null;
+        
+        // Save the new balloon position without re-fetching or altering the existing dimension value
+        const characteristic = characteristics.find(item => item.balloonId === balloon._id);
+        
+        const updatedBalloon = await api.put(`/balloons/${balloon._id}`, {
+          x: balloon.x,
+          y: balloon.y,
+          anchorX: balloon.anchorX,
+          anchorY: balloon.anchorY
+        });
 
-        try {
-          /*
-            Read at the arrow's anchor point (where the
-            balloon is pointing), not at the balloon marker
-            itself, so it picks up the value it points at.
-          */
-
-          const readX =
-            balloon.anchorX ??
-            balloon.x + 12;
-
-          const readY =
-            balloon.anchorY ??
-            balloon.y + 12;
-
-          fetchedDimension =
-            await readDimensionAtPoint(
-              readX,
-              readY
-            );
-        } catch (readError) {
-          console.error(
-            'Failed to read dimension at drop point:',
-            readError
+        if (characteristic) {
+          await api.put(`/characteristics/${characteristic._id}`, {
+            x: balloon.x,
+            y: balloon.y
+          });
+          
+          setCharacteristics(prev =>
+            prev.map(item => item._id === characteristic._id ? { ...item, x: balloon.x, y: balloon.y } : item)
           );
         }
 
-        const characteristic =
-          characteristics.find(
-            (item) =>
-              item.balloonId ===
-              balloon._id
-          );
-
-        if (fetchedDimension) {
-          const updatedBalloon =
-            await api.put(
-              `/balloons/${balloon._id}`,
-              {
-                x: balloon.x,
-                y: balloon.y,
-
-                /*
-                  Re-anchor the arrow at the
-                  new measurement.
-                */
-
-                anchorX:
-                  fetchedDimension.centerX,
-
-                anchorY:
-                  fetchedDimension.centerY,
-
-                text:
-                  fetchedDimension.text,
-
-                type:
-                  fetchedDimension.type
-              }
-            );
-
-          if (characteristic) {
-            const updatedCharacteristic =
-              await api.put(
-                `/characteristics/${characteristic._id}`,
-                {
-                  type:
-                    fetchedDimension.type,
-
-                  value:
-                    fetchedDimension.value,
-
-                  plusTolerance:
-                    fetchedDimension.plusTolerance,
-
-                  minusTolerance:
-                    fetchedDimension.minusTolerance,
-
-                  upperLimit:
-                    fetchedDimension.upperLimit,
-
-                  lowerLimit:
-                    fetchedDimension.lowerLimit,
-
-                  specification:
-                    fetchedDimension.specification,
-
-                  x: balloon.x,
-                  y: balloon.y
-                }
-              );
-
-            setCharacteristics(
-              (prev) =>
-                prev.map((item) =>
-                  item._id ===
-                    characteristic._id
-                    ? {
-                      ...updatedCharacteristic
-                    }
-                    : item
-                )
-            );
-          }
-
-          setBalloons((prev) =>
-            prev.map((item) =>
-              item._id ===
-                balloon._id
-                ? {
-                  ...item,
-                  ...updatedBalloon
-                }
-                : item
-            )
-          );
-
-          setMessage(
-            `Balloon ${balloon.number}: ${fetchedDimension.specification} fetched into the characteristic table`
-          );
-        } else {
-          await api.put(
-            `/balloons/${balloon._id}`,
-            {
-              x: balloon.x,
-              y: balloon.y,
-              anchorX: balloon.anchorX,
-              anchorY: balloon.anchorY
-            }
-          );
-
-          // Also update characteristic position
-          if (characteristic) {
-            setCharacteristics(
-              (prev) =>
-                prev.map((item) =>
-                  item._id ===
-                    characteristic._id
-                    ? {
-                      ...item,
-                      x: balloon.x,
-                      y: balloon.y
-                    }
-                    : item
-                )
-            );
-
-            await api.put(
-              `/characteristics/${characteristic._id}`,
-              {
-                x: balloon.x,
-                y: balloon.y
-              }
-            );
-          }
-
-          setMessage(
-            `Balloon ${balloon.number} moved`
-          );
-        }
-      } catch (error) {
+        setBalloons(prev => prev.map(item => item._id === balloon._id ? { ...item, ...updatedBalloon } : item));
+        setMessage(`Balloon ${balloon.number} moved`);
+        } catch (error) {
         console.error(
           'Failed to save balloon position:',
           error
@@ -4067,9 +3930,9 @@ const extractOcrWords = (data) => {
             neighbouring balloons apart.
           */
 
-          const arrowDistance = 15;
+          const arrowDistance = 25;
 
-          const horizontalSpread = 10;
+          const horizontalSpread = 15;
 
           const balloonX =
             valueCenterX +
@@ -5118,7 +4981,7 @@ const extractOcrWords = (data) => {
                               className={`flex h-6 min-w-6 items-center justify-center rounded-full border-[1.5px] px-1.5 text-[10px] font-bold shadow-sm ${selectedBalloonId ===
                                 balloon._id
                                 ? 'border-yellow-500 bg-yellow-400/50 text-yellow-900 backdrop-blur-[1px]'
-                                : 'border-red-500 bg-red-500/40 text-red-900 backdrop-blur-[1px]'
+                                : 'border-red-500 border-[1.5px] bg-red-900/60 text-white backdrop-blur-[1px]'
                                 }`}
                               onPointerDown={(event) => {
                                 event.stopPropagation();
