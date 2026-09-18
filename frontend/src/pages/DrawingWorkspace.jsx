@@ -2418,8 +2418,8 @@ export default function DrawingWorkspace() {
       : prefix + cleanedValue;
 
     const numericValue = Number(value);
-    const plus = Number(plusTolerance);
-    const minus = Number(minusTolerance);
+    const plus = Number(plusTolerance.replace(/^\+/, ''));
+    const minus = Number(minusTolerance.replace(/^-/, ''));
 
     let upperLimit = '0.00';
     let lowerLimit = '0.00';
