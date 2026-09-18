@@ -399,6 +399,7 @@ export default function DrawingWorkspace() {
   const [addScanning, setAddScanning] = useState(false);
   const [selectRect, setSelectRect] = useState(null);
   const [roiRect, setRoiRect] = useState(null);
+  const [previewDetections, setPreviewDetections] = useState([]);
   const roiSelectRef = useRef(null);
 
   const [zoom, setZoom] = useState(1);
@@ -1029,7 +1030,9 @@ export default function DrawingWorkspace() {
       pdf.setFontSize(11);
       pdf.setFont('times', 'normal');
       pdf.setTextColor(0, 0, 0); // Black text
-      pdf.text('Ballooning generated using VYAVASTHA Software.', pageWidthMm - 10, pageHeightMm - 5, { align: 'right' });
+      pdf.setFillColor(255, 255, 255);
+      pdf.rect(pageWidthMm - 100, pageHeightMm - 9, 95, 6, 'F');
+      pdf.text('Ballooning generated using PESCOM VYAVASTHA software', pageWidthMm - 10, pageHeightMm - 5, { align: 'right' });
       pdf.setTextColor(0, 0, 0); // Reset to black
 
 
@@ -2780,6 +2783,86 @@ const extractOcrWords = (data) => {
   };
 
   /* Add Dimension scan: read inside the selected rectangle. */
+
+  
+    const analyzeArea = async (rect) => {
+        if (!pdfPage) return;
+        const minX = Math.min(rect.x1, rect.x2);
+        const maxX = Math.max(rect.x1, rect.x2);
+        const minY = Math.min(rect.y1, rect.y2);
+        const maxY = Math.max(rect.y1, rect.y2);
+
+        let detected = [];
+        
+        try {
+            const viewport = pdfPage.getViewport({ scale: 1 });
+            const textContent = await pdfPage.getTextContent();
+            let displayScale = 1;
+            if (canvasRef.current) displayScale = canvasRef.current.width / viewport.width;
+
+            for (const item of textContent.items) {
+                if (!item.str || !item.str.trim()) continue;
+                
+                // Convert PDF coordinate to Canvas space
+                const tx = window.pdfjsLib.Util.transform(viewport.transform, item.transform);
+                const itemX = tx[4] * displayScale;
+                const itemY = tx[5] * displayScale;
+                const itemW = item.width * displayScale;
+                const itemH = item.height * displayScale;
+                const centerX = itemX + itemW / 2;
+                const centerY = itemY - itemH / 2;
+
+                if (centerX >= minX && centerX <= maxX && centerY >= minY && centerY <= maxY) {
+                    detected.push({
+                        text: item.str.trim(),
+                        x: itemX,
+                        y: itemY,
+                        width: itemW,
+                        height: itemH,
+                        confidence: 100,
+                        source: 'pdf'
+                    });
+                }
+            }
+        } catch (e) {
+            console.error("PDF text extraction failed", e);
+        }
+
+        const hasValidPdfText = detected.some(item => detectPatterns(item.text) !== null);
+
+        if (!hasValidPdfText && typeof ocrReadRegion === 'function') {
+            try {
+                const ocrItems = await ocrReadRegion(rect);
+                // ocrReadRegion already returns coordinates in absolute Canvas Space (sx / ratio applied internally).
+                // So we just map them directly into our detected array!
+                for (const item of ocrItems) {
+                    detected.push({
+                        text: item.text.trim(),
+                        x: item.x,
+                        y: item.y,
+                        width: item.width,
+                        height: item.height,
+                        confidence: item.confidence || 80,
+                        source: 'ocr'
+                    });
+                }
+            } catch (e) {
+                console.error("OCR fallback failed", e);
+            }
+        }
+
+        let finalDetected = clusterDetectionsIntoDimensions(detected);
+
+        finalDetected = finalDetected.map(item => {
+            const match = detectPatterns(item.text);
+            if (match) {
+                return { ...item, type: match.type, specification: item.text, confidence: 100 };
+            }
+            return item;
+        }).filter(item => detectPatterns(item.text) !== null);
+
+        setPreviewDetections(finalDetected);
+    };
 
   const scanDimensionInRect = async (rect) => {
     if (!pdfPage) {

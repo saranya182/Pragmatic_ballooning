@@ -1,0 +1,427 @@
+{
+  "title": "Engineering Drawing Ballooning Pattern Library – extracted from supplied drawing set",
+  "purpose": "Pattern families and notation variants to drive pre-detection/highlighting before AutoDetect ballooning.",
+  "coverage": {
+    "pdfs_in_drawings_zip": 102,
+    "note": "The supplied drawings ZIP contains 102 PDF drawings. Numeric values are instances; the library stores normalized characteristic families so new values can match the same family."
+  },
+  "critical_rules": [
+    "Search the entire selected ROI against every pattern family; do not stop after the first match.",
+    "A quantity modifier such as 2x/4x belongs to the following feature; do not create a separate balloon for the multiplier.",
+    "TYP, THRU, THRU ALL, DEEP/DEPTH, and FROM OTHER SIDE are modifiers that should be clustered with the parent feature.",
+    "Do not use title-block notes such as REV, DATE, SCALE, MATERIAL, DRAWING NO, etc. as characteristics.",
+    "Do not rely on OCR text alone for GD&T, datum frames, surface-finish symbols, or other graphical symbols.",
+    "Support PDF text layer first and OCR fallback second; merge/deduplicate detections spatially.",
+    "Normalize Ø/∅/Φ and OCR confusions O/Q/0 only in the matching layer; preserve the original drawing text for display.",
+    "Normalize decimal comma and decimal point equivalently for matching.",
+    "Support rotated/vertical text and stacked tolerance layouts.",
+    "Keep coordinates in the PDF/page coordinate system so highlights can be drawn immediately after ROI selection.",
+    "Return all matches with confidence and bounding boxes; do not silently discard low-confidence candidates. Use a review state when confidence is insufficient."
+  ],
+  "patterns": [
+    {
+      "id": "P01",
+      "name": "Linear dimension",
+      "kind": "dimension",
+      "canonical": "<NUMBER>",
+      "observed_forms": [
+        "25",
+        "36",
+        "68",
+        "120",
+        "410",
+        "420"
+      ],
+      "match_rules": [
+        "numeric dimension token",
+        "allow decimal point or decimal comma",
+        "allow optional unit text"
+      ]
+    },
+    {
+      "id": "P02",
+      "name": "Bilateral tolerance",
+      "kind": "tolerance_dimension",
+      "canonical": "<NUMBER> ± <TOLERANCE>",
+      "observed_forms": [
+        "36 ±0.1",
+        "48 ±0.02",
+        "20 ±0.02",
+        "25 ±0.1"
+      ],
+      "match_rules": [
+        "allow spaces/no spaces around ±",
+        "allow decimal comma"
+      ]
+    },
+    {
+      "id": "P03",
+      "name": "Unilateral positive tolerance",
+      "kind": "tolerance_dimension",
+      "canonical": "<NUMBER> +<TOLERANCE>",
+      "observed_forms": [
+        "8 +0.3",
+        "20 +0.009",
+        "400 +0.01"
+      ],
+      "match_rules": [
+        "allow stacked OCR tolerance lines"
+      ]
+    },
+    {
+      "id": "P04",
+      "name": "Unilateral negative tolerance",
+      "kind": "tolerance_dimension",
+      "canonical": "<NUMBER> -<TOLERANCE>",
+      "observed_forms": [
+        "8 -0",
+        "0.3 -0.1",
+        "14 -0.1"
+      ],
+      "match_rules": [
+        "allow Unicode minus"
+      ]
+    },
+    {
+      "id": "P05",
+      "name": "Asymmetric plus/minus tolerance",
+      "kind": "tolerance_dimension",
+      "canonical": "<NUMBER> +<PLUS>/-<MINUS>",
+      "observed_forms": [
+        "<number> +0.02/-0.01"
+      ],
+      "match_rules": [
+        "accept split stacked OCR representation"
+      ]
+    },
+    {
+      "id": "P06",
+      "name": "Diameter",
+      "kind": "diameter",
+      "canonical": "Ø<NUMBER>",
+      "observed_forms": [
+        "Ø10",
+        "Ø6",
+        "Ø0.2"
+      ],
+      "match_rules": [
+        "accept Ø, ∅, Φ, phi and OCR O/Q/0 normalization when followed by a number"
+      ]
+    },
+    {
+      "id": "P07",
+      "name": "Diameter with fit/tolerance",
+      "kind": "diameter",
+      "canonical": "Ø<NUMBER> <FIT/TOLERANCE>",
+      "observed_forms": [
+        "Ø<NUMBER> H7",
+        "Ø<NUMBER> +<TOLERANCE>"
+      ],
+      "match_rules": [
+        "associate adjacent fit/tolerance text with same callout"
+      ]
+    },
+    {
+      "id": "P08",
+      "name": "Radius",
+      "kind": "radius",
+      "canonical": "R<NUMBER>",
+      "observed_forms": [
+        "R2",
+        "R3",
+        "R5",
+        "R10",
+        "R13"
+      ],
+      "match_rules": [
+        "allow R <number> spacing",
+        "allow optional tolerance"
+      ]
+    },
+    {
+      "id": "P09",
+      "name": "Angle",
+      "kind": "angle",
+      "canonical": "<NUMBER>°",
+      "observed_forms": [
+        "3°",
+        "15°",
+        "45°",
+        "60°"
+      ],
+      "match_rules": [
+        "allow decimal angle and optional angular tolerance"
+      ]
+    },
+    {
+      "id": "P10",
+      "name": "Chamfer",
+      "kind": "chamfer",
+      "canonical": "<SIZE>x<SIZE>°",
+      "observed_forms": [
+        "0.5x45°",
+        "1x45°",
+        "2x45°",
+        "3x45°",
+        "5x45°"
+      ],
+      "match_rules": [
+        "allow x/X/×",
+        "allow optional degree symbol"
+      ]
+    },
+    {
+      "id": "P11",
+      "name": "Chamfer marked TYP",
+      "kind": "chamfer",
+      "canonical": "<SIZE>x<ANGLE>° TYP",
+      "observed_forms": [
+        "0.3x45 TYP",
+        "2x45° TYP",
+        "0.5x45° TYP",
+        "3x45° TYP",
+        "1x45° TYP"
+      ],
+      "match_rules": [
+        "TYP is a modifier, not a separate balloon unless the UI treats it as part of the callout"
+      ]
+    },
+    {
+      "id": "P12",
+      "name": "Repeated feature quantity",
+      "kind": "quantity",
+      "canonical": "<COUNT>x <FEATURE>",
+      "observed_forms": [
+        "2x Ø8",
+        "5x Ø5",
+        "2x Ø21",
+        "4x 3.0 THRU",
+        "2x 4.2 THRU",
+        "4x 3.3 THRU"
+      ],
+      "match_rules": [
+        "quantity belongs to the following feature; do not balloon count separately"
+      ]
+    },
+    {
+      "id": "P13",
+      "name": "Through hole",
+      "kind": "hole",
+      "canonical": "<DIAMETER> THRU",
+      "observed_forms": [
+        "5.5 THRU",
+        "9 THRU",
+        "6.6 THRU",
+        "2x 6.5 THRU"
+      ],
+      "match_rules": [
+        "associate THRU with preceding diameter/hole size"
+      ]
+    },
+    {
+      "id": "P14",
+      "name": "Through-all hole",
+      "kind": "hole",
+      "canonical": "<DIAMETER> THRU ALL",
+      "observed_forms": [
+        "6.6 THRU ALL",
+        "9 THRU ALL",
+        "2x 6.6 THRU ALL",
+        "4x 2.4 THRU ALL"
+      ],
+      "match_rules": [
+        "THRU ALL is part of same characteristic"
+      ]
+    },
+    {
+      "id": "P15",
+      "name": "Thread",
+      "kind": "thread",
+      "canonical": "M<SIZE>",
+      "observed_forms": [
+        "M5",
+        "M6",
+        "M8",
+        "M4"
+      ],
+      "match_rules": [
+        "accept decimal pitch only when present",
+        "do not confuse material/part numbers with M notation"
+      ]
+    },
+    {
+      "id": "P16",
+      "name": "Thread with pitch",
+      "kind": "thread",
+      "canonical": "M<SIZE>x<PITCH>",
+      "observed_forms": [
+        "M5x0.8",
+        "M6x1.0",
+        "M8x1.25",
+        "M4x0.7"
+      ],
+      "match_rules": [
+        "allow x/X/× and spacing"
+      ]
+    },
+    {
+      "id": "P17",
+      "name": "Thread through all",
+      "kind": "thread",
+      "canonical": "M<SIZE>x<PITCH> THRU ALL",
+      "observed_forms": [
+        "M3x0.5 THRU ALL",
+        "M4x0.7 THRU ALL",
+        "M8x1.25 THRU ALL"
+      ],
+      "match_rules": [
+        "THRU ALL is attached modifier"
+      ]
+    },
+    {
+      "id": "P18",
+      "name": "Thread through",
+      "kind": "thread",
+      "canonical": "M<SIZE>x<PITCH> THRU",
+      "observed_forms": [
+        "M4x0.7 THRU",
+        "M5x0.8 THRU",
+        "M6x1.0 THRU",
+        "M5 THRU"
+      ],
+      "match_rules": [
+        "THRU is attached modifier"
+      ]
+    },
+    {
+      "id": "P19",
+      "name": "Fit designation",
+      "kind": "fit",
+      "canonical": "<NUMBER> <FIT>",
+      "observed_forms": [
+        "1 H13",
+        "8 H11",
+        "73 h1",
+        "10 g6",
+        "60 d1",
+        "79 c8",
+        "189.5 f3",
+        "6 e1",
+        "69.5 j1",
+        "15m6",
+        "18m6"
+      ],
+      "match_rules": [
+        "common fit letters include H/h, G/g, D/d, C/c, F/f, E/e, J/j, M/m, B/b, etc.; preserve exact case when meaningful"
+      ]
+    },
+    {
+      "id": "P20",
+      "name": "Depth",
+      "kind": "depth",
+      "canonical": "<NUMBER> DEEP or DEPTH",
+      "observed_forms": [
+        "<NUMBER> DEEP",
+        "<NUMBER> DEPTH"
+      ],
+      "match_rules": [
+        "associate depth modifier with preceding hole/feature"
+      ]
+    },
+    {
+      "id": "P21",
+      "name": "Typical modifier",
+      "kind": "modifier",
+      "canonical": "TYP",
+      "observed_forms": [
+        "TYP",
+        "2x45 TYP",
+        "R3 TYP"
+      ],
+      "match_rules": [
+        "TYP modifies a feature and must stay attached to its parent characteristic"
+      ]
+    },
+    {
+      "id": "P22",
+      "name": "From-other-side modifier",
+      "kind": "modifier",
+      "canonical": "FROM OTHER SIDE",
+      "observed_forms": [
+        "FROM OTHER SIDE"
+      ],
+      "match_rules": [
+        "attach to the nearby hole/feature callout"
+      ]
+    },
+    {
+      "id": "P23",
+      "name": "Datum reference",
+      "kind": "datum",
+      "canonical": "<DATUM LETTER>",
+      "observed_forms": [
+        "A",
+        "B",
+        "C"
+      ],
+      "match_rules": [
+        "recognize datum flag/reference geometry separately from ordinary text"
+      ]
+    },
+    {
+      "id": "P24",
+      "name": "Geometric tolerance / feature-control-frame text",
+      "kind": "gd_t",
+      "canonical": "<GEOMETRIC_SYMBOL> <TOLERANCE> [DATUM REFS]",
+      "observed_forms": [
+        "0.02 A",
+        "0.02",
+        "0.05",
+        "0.025"
+      ],
+      "match_rules": [
+        "detect the complete feature-control frame and associated datum letters; visual symbol may not survive text extraction"
+      ]
+    },
+    {
+      "id": "P25",
+      "name": "Surface-finish characteristic",
+      "kind": "surface_finish",
+      "canonical": "<SURFACE_FINISH_SYMBOL> <ROUGHNESS>",
+      "observed_forms": [
+        "surface-finish symbols are present visually in the supplied drawings"
+      ],
+      "match_rules": [
+        "requires visual/vector symbol detection; OCR text alone is insufficient"
+      ]
+    },
+    {
+      "id": "P26",
+      "name": "Stacked/multiline characteristic",
+      "kind": "layout",
+      "canonical": "<VALUE> on one line + <TOLERANCE/FIT/DEPTH> on adjacent line",
+      "observed_forms": [
+        "±0.1 above/below a nominal value",
+        "H7 adjacent/stacked with a diameter"
+      ],
+      "match_rules": [
+        "cluster by spatial proximity and leader-line context before classification"
+      ]
+    },
+    {
+      "id": "P27",
+      "name": "Decimal comma variant",
+      "kind": "normalization",
+      "canonical": "<NUMBER> using comma decimal separator",
+      "observed_forms": [
+        "0,5",
+        "19,95",
+        "42,5",
+        "45,07"
+      ],
+      "match_rules": [
+        "normalize comma to dot internally but preserve original display text"
+      ]
+    }
+  ]
+}
