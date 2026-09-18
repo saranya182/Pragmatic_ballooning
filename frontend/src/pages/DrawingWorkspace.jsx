@@ -926,7 +926,7 @@ export default function DrawingWorkspace() {
           y + uy * radius;
 
         // Leader line
-        context.strokeStyle = 'rgba(220, 38, 38, 0.7)';
+        context.strokeStyle = 'rgba(220, 38, 38, 0.4)';
         context.lineWidth = Math.max(
           1.5 * ratio,
           1.5
@@ -941,7 +941,7 @@ export default function DrawingWorkspace() {
         const angle =
           Math.atan2(uy, ux);
 
-        context.fillStyle = 'rgba(220, 38, 38, 0.7)';
+        context.fillStyle = 'rgba(220, 38, 38, 0.4)';
         context.beginPath();
         context.moveTo(ax, ay);
         context.lineTo(
@@ -964,7 +964,7 @@ export default function DrawingWorkspace() {
         context.fill();
 
         // Balloon circle
-        context.fillStyle = '#dc2626';
+        context.fillStyle = 'rgba(239, 68, 68, 0.4)';
         context.beginPath();
         context.arc(
           x,
@@ -976,7 +976,7 @@ export default function DrawingWorkspace() {
         context.fill();
 
         // Balloon number
-        context.fillStyle = '#ffffff';
+        context.fillStyle = '#7f1d1d';
         context.textAlign = 'center';
         context.textBaseline = 'middle';
         context.font = `bold ${Math.max(
@@ -1164,8 +1164,8 @@ export default function DrawingWorkspace() {
       // place the balloon away from it.
       anchorX = detected.centerX;
       anchorY = detected.centerY;
-      balloonX = Math.max(0, anchorX + 25);
-      balloonY = Math.max(0, anchorY - 30);
+      balloonX = Math.max(0, anchorX + 15);
+      balloonY = Math.max(0, anchorY - 15);
 
       const nextNumber = getNextBalloonNumber();
 
