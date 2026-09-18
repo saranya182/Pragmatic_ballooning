@@ -5261,6 +5261,24 @@ const extractOcrWords = (data) => {
                       : prev
                   )
                 }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const parsed = parseSpecificationText(editData?.specification ?? '');
+                    if (parsed) {
+                      setEditData((prev) => {
+                        if (!prev) return prev;
+                        return {
+                          ...prev,
+                          value: parsed.mainValue || prev.value,
+                          plusTolerance: parsed.plusTol !== '' ? parsed.plusTol : prev.plusTolerance,
+                          minusTolerance: parsed.minusTol !== '' ? parsed.minusTol : prev.minusTolerance,
+                        };
+                      });
+                    }
+                    setTimeout(() => saveEdit(), 50);
+                  }
+                }}
                 onBlur={saveEdit}
                 placeholder="—"
                 className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
