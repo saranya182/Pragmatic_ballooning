@@ -103,49 +103,84 @@ export const enhanceDetections = (items, pageWidth = 0, pageHeight = 0) => {
   return unique;
 };
 
+
 const parseCallout = (text) => {
   const norm = text.toUpperCase().replace(/\s+/g, ' ');
   let result = { type: 'Dimension', value: norm, specification: text, plusTolerance: '0.00', minusTolerance: '0.00', score: 0 };
 
-  if (/(?:[1-9]\d*X\s*)?(?:Ø|R|M)?\d+(?:\.\d+)?\s*(?:±|\+\/-)\s*\d+(?:\.\d+)?/.test(norm)) {
-    result.type = norm.includes('Ø') ? 'Diameter' : norm.includes('R') ? 'Radius' : norm.includes('M') ? 'Thread' : 'Dimension';
+  // Plus/Minus matching (± or +/- or +- or + -)
+  const plusMinusRe = /^\s*(?:[1-9]\d*X\s*)?(?:Ø|A~|R|M|SØ|SR)?\s*(\d+(?:\.\d+)?)(?:\s*[A-Z0-9]+)*\s*(?:±|A|\+\/-|\+-|\+\s*-)\s*(\d+(?:\.\d+)?)/i;
+  const pmMatch = norm.match(plusMinusRe);
+  if (pmMatch) {
+    result.type = norm.includes('Ø') || norm.includes('A~') ? 'Diameter' : norm.includes('R') ? 'Radius' : norm.includes('M') ? 'Thread' : 'Dimension';
     result.score += 25;
+    
+    // Extract proper values
+    let prefix = '';
+    const prefixMatch = text.match(/^\s*([1-9]\d*X\s*)?(Ø|A~|R|M|SØ|SR)/i);
+    if (prefixMatch) {
+      prefix = prefixMatch[0].trim() + (prefixMatch[0].endsWith('X') ? ' ' : '');
+    }
+    result.value = prefix + pmMatch[1];
+    result.plusTolerance = '+' + pmMatch[2];
+    result.minusTolerance = '-' + pmMatch[2];
     return result;
   }
 
-  if (/(?:[1-9]\d*X\s*)?(?:Ø|R|M)?\d+(?:\.\d+)?\s*\+\d+(?:\.\d+)?\s*\/\s*-\d+(?:\.\d+)?/.test(norm)) {
-    result.type = norm.includes('Ø') ? 'Diameter' : norm.includes('R') ? 'Radius' : norm.includes('M') ? 'Thread' : 'Dimension';
+  // Bilateral matching (+X/-Y)
+  const bilateralRe = /^\s*(?:[1-9]\d*X\s*)?(?:Ø|A~|R|M|SØ|SR)?\s*(\d+(?:\.\d+)?)(?:\s*[A-Z0-9]+)*\s*\+\s*(\d+(?:\.\d+)?)\s*\/\s*-\s*(\d+(?:\.\d+)?)/i;
+  const blMatch = norm.match(bilateralRe);
+  if (blMatch) {
+    result.type = norm.includes('Ø') || norm.includes('A~') ? 'Diameter' : norm.includes('R') ? 'Radius' : norm.includes('M') ? 'Thread' : 'Dimension';
     result.score += 30;
+    
+    let prefix = '';
+    const prefixMatch = text.match(/^\s*([1-9]\d*X\s*)?(Ø|A~|R|M|SØ|SR)/i);
+    if (prefixMatch) {
+      prefix = prefixMatch[0].trim() + (prefixMatch[0].endsWith('X') ? ' ' : '');
+    }
+    result.value = prefix + blMatch[1];
+    result.plusTolerance = '+' + blMatch[2];
+    result.minusTolerance = '-' + blMatch[3];
     return result;
   }
 
-  if (/M\d+(?:\.\d+)?(?:\s*[X×]\s*\d+(?:\.\d+)?)?(?:\s*THRU)?/i.test(norm)) {
+  if (/M\d+(?:\.\d+)?(?:\s*[XA-]\s*\d+(?:\.\d+)?)?(?:\s*THRU)?/i.test(norm)) {
     result.type = 'Thread';
     result.score += 25;
+    result.value = norm.match(/M\d+(?:\.\d+)?(?:\s*[XA-]\s*\d+(?:\.\d+)?)?/i)[0];
     return result;
   }
 
-  if (/(?:Ø|∅)\s*\d+(?:\.\d+)?/i.test(norm)) {
+  if (/(?:Ø|A~|^.)\s*(\d+(?:\.\d+)?)/i.test(norm)) {
     result.type = 'Diameter';
     result.score += 15;
+    const match = norm.match(/(?:Ø|A~|^.)\s*(\d+(?:\.\d+)?)/i);
+    result.value = 'Ø' + match[1];
     return result;
   }
 
-  if (/R\s*\d+(?:\.\d+)?/i.test(norm)) {
+  if (/R\s*(\d+(?:\.\d+)?)/i.test(norm)) {
     result.type = 'Radius';
     result.score += 15;
+    const match = norm.match(/R\s*(\d+(?:\.\d+)?)/i);
+    result.value = 'R' + match[1];
     return result;
   }
 
-  if (/\d+(?:\.\d+)?\s*[A-Z]{1,2}\d{1,2}/.test(norm)) {
+  if (/(\d+(?:\.\d+)?)\s*([A-Z]{1,2}\d{1,2})/.test(norm)) {
     result.type = 'Fit';
     result.score += 25;
+    const match = norm.match(/(\d+(?:\.\d+)?)\s*([A-Z]{1,2}\d{1,2})/);
+    result.value = match[1] + ' ' + match[2];
     return result;
   }
 
   if (/(?:[1-9]\d*X\s*)?\d+(?:\.\d+)?/.test(norm) && text.length < 15 && !/[A-Z]{3,}/.test(norm)) {
     result.type = 'Dimension';
     result.score += 10;
+    const match = norm.match(/(?:[1-9]\d*X\s*)?(\d+(?:\.\d+)?)/);
+    result.value = match[0];
     return result;
   }
 
