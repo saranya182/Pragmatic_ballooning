@@ -1667,6 +1667,83 @@ export default function DrawingWorkspace() {
      BALLOON EDIT PANEL (right side)
   ========================================================= */
 
+
+  /*
+   * parseSpecificationText
+   * Parses a free-text engineering dimension string entered manually
+   * in the Description field (e.g. "Ø10.10 +0.10/-0.10" or "9.1")
+   * and returns { mainValue, plusTol, minusTol }
+   *
+   * Supported formats:
+   *   Ø10.10 +0.10/-0.10
+   *   10.05 +0.02 / -0.01
+   *   14 +0.017/0
+   *   2.75 ±0.10
+   *   R25.00
+   *   9.1 (no tolerance)
+   *   Ø6.50 0 / -0.10
+   */
+  const parseSpecificationText = (text) => {
+    if (!text) return null;
+    const t = text.trim();
+
+    // Pattern: main value (with optional prefix like Ø/R/SA~) then optional tolerances
+    // Main value: optional symbol chars + digits[.digits]
+    const mainRe = /^([ØøRrA~SA~⌀]*\s*(?:\d+\s*[xX*]\s*)*\d+(?:[.,]\d+)?(?:\s*(?:TYP|THRU|DP|DEEP|MAX|MIN|REF|mm|in|inch))*)/i;
+    const mainMatch = t.match(mainRe);
+    if (!mainMatch) return null;
+
+    const mainValue = mainMatch[1].trim();
+    const rest = t.slice(mainMatch[0].length).trim();
+
+    if (!rest) {
+      return { mainValue, plusTol: '', minusTol: '' };
+    }
+
+    let plusTol = '';
+    let minusTol = '';
+
+    // ± (symmetric)
+    const symRe = /^[±]s*([d.]+)/;
+    const symMatch = rest.match(symRe);
+    if (symMatch) {
+      plusTol = '+' + symMatch[1];
+      minusTol = '-' + symMatch[1];
+      return { mainValue, plusTol, minusTol };
+    }
+
+    // +X/-Y or -X/+Y or +X/Y or X/-Y etc (slash separated)
+    const slashRe = /^([+-]?s*[d.]+)s*[/]s*([+-]?s*[d.]+)/;
+    const slashMatch = rest.match(slashRe);
+    if (slashMatch) {
+      const a = slashMatch[1].replace(/\s+/g, '');
+      const b = slashMatch[2].replace(/\s+/g, '');
+      // Figure out which is plus, which is minus
+      const aNum = parseFloat(a);
+      const bNum = parseFloat(b);
+      if (a.startsWith('+') || aNum >= 0) {
+        plusTol = (a.startsWith('+') || aNum > 0) ? (a.startsWith('+') ? a : '+' + a) : '+' + a;
+        minusTol = (b.startsWith('-') ? b : '-' + Math.abs(bNum));
+      } else {
+        plusTol = (b.startsWith('+') || bNum >= 0) ? (b.startsWith('+') ? b : '+' + b) : '+' + b;
+        minusTol = a.startsWith('-') ? a : '-' + Math.abs(aNum);
+      }
+      return { mainValue, plusTol, minusTol };
+    }
+
+    // Single tolerance +X or -X
+    const singleRe = /^([+-]s*[d.]+)/;
+    const singleMatch = rest.match(singleRe);
+    if (singleMatch) {
+      const v = singleMatch[1].replace(/\s+/g, '');
+      if (v.startsWith('+')) plusTol = v;
+      else minusTol = v;
+      return { mainValue, plusTol, minusTol };
+    }
+
+    return { mainValue, plusTol: '', minusTol: '' };
+  };
+
   const syncEditFromBalloon = (balloonId) => {
     const characteristic = characteristics.find(
       (item) => item.balloonId === balloonId
@@ -4718,7 +4795,7 @@ const extractOcrWords = (data) => {
 
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
 
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10 bg-white py-1">
 
             <div className="font-semibold text-slate-900">
               Engineering Drawing Viewer
@@ -4749,7 +4826,7 @@ const extractOcrWords = (data) => {
             ref={
               pdfContainerRef
             }
-            className="relative min-h-[650px] overflow-auto rounded-lg border border-slate-300 bg-slate-200"
+            className="relative h-[70vh] overflow-auto rounded-lg border border-slate-300 bg-slate-200"
           >
 
             {!selectedDrawing ? (

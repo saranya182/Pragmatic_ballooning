@@ -24,8 +24,8 @@ const AppShell = ({ children }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shadow">
+    <div className="h-screen flex flex-col bg-slate-100 overflow-hidden">
+      <header className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shadow sticky top-0 z-50 flex-shrink-0">
         <div>
           <div className="text-lg font-semibold">Manufacturing Drawing Ballooning & Inspection</div>
           <div className="text-sm text-slate-400">Engineering inspection workflow</div>
@@ -42,7 +42,7 @@ const AppShell = ({ children }) => {
           </button>
         </div>
       </header>
-      <main className="p-6">{children}</main>
+      <main className="flex-1 overflow-y-auto p-6">{children}</main>
     </div>
   );
 };
