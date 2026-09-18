@@ -1164,8 +1164,8 @@ export default function DrawingWorkspace() {
       // place the balloon away from it.
       anchorX = detected.centerX;
       anchorY = detected.centerY;
-      balloonX = Math.max(0, anchorX + 40);
-      balloonY = Math.max(0, anchorY - 60);
+      balloonX = Math.max(0, anchorX + 25);
+      balloonY = Math.max(0, anchorY - 30);
 
       const nextNumber = getNextBalloonNumber();
 
@@ -5055,7 +5055,7 @@ const extractOcrWords = (data) => {
                                   y1={startY}
                                   x2={ax}
                                   y2={ay}
-                                  stroke="rgba(220, 38, 38, 0.7)"
+                                  stroke="rgba(220, 38, 38, 0.4)"
                                   strokeWidth="1.5"
                                   strokeLinecap="round"
                                 />
@@ -5117,10 +5117,10 @@ const extractOcrWords = (data) => {
 
                             <button
                               type="button"
-                              className={`flex h-6 min-w-6 items-center justify-center rounded-full border-[1.5px] px-1.5 text-[10px] font-bold text-white shadow-sm ${selectedBalloonId ===
+                              className={`flex h-6 min-w-6 items-center justify-center rounded-full border-[1.5px] px-1.5 text-[10px] font-bold shadow-sm ${selectedBalloonId ===
                                 balloon._id
-                                ? 'border-yellow-300 bg-yellow-500'
-                                : 'border-red-600 bg-red-600'
+                                ? 'border-yellow-500 bg-yellow-400/50 text-yellow-900 backdrop-blur-[1px]'
+                                : 'border-red-500 bg-red-500/40 text-red-900 backdrop-blur-[1px]'
                                 }`}
                               onPointerDown={(event) => {
                                 event.stopPropagation();
