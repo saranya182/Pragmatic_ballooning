@@ -4067,11 +4067,9 @@ const extractOcrWords = (data) => {
             neighbouring balloons apart.
           */
 
-          const arrowDistance =
-            60;
+          const arrowDistance = 15;
 
-          const horizontalSpread =
-            40;
+          const horizontalSpread = 10;
 
           const balloonX =
             valueCenterX +
