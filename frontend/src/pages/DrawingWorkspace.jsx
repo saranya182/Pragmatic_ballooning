@@ -1835,7 +1835,8 @@ export default function DrawingWorkspace() {
   };
 
   const saveEdit = async (overrideData = null) => {
-    const dataToSave = overrideData || editData;
+    // If overrideData is a DOM Event (from onBlur), ignore it and use editData
+    const dataToSave = (overrideData && overrideData.characteristicId) ? overrideData : editData;
     if (!dataToSave?.characteristicId) {
       setMessage('Enter a balloon number or select a balloon first');
       return;
