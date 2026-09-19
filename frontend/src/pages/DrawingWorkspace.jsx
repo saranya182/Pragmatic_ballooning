@@ -1899,6 +1899,22 @@ export default function DrawingWorkspace() {
     }
   }, [selectedBalloonId, characteristics]);
 
+  const getDisplayValues = (c) => {
+    const isZeroOrEmpty = (v) => !v || v === '0.00' || v === '0' || v === '';
+    let plusTol = c.plusTolerance || '';
+    let minusTol = c.minusTolerance || '';
+    let mainVal = c.value || '';
+    if (isZeroOrEmpty(plusTol) && isZeroOrEmpty(minusTol) && c.specification) {
+      const parsed = parseSpecificationText(c.specification);
+      if (parsed) {
+        if (parsed.mainValue) mainVal = parsed.mainValue;
+        if (parsed.plusTol) plusTol = parsed.plusTol;
+        if (parsed.minusTol) minusTol = parsed.minusTol;
+      }
+    }
+    return { mainVal, plusTol, minusTol };
+  };
+
   const exportToExcel = () => {
     const data = characteristics
       .slice()
@@ -5532,7 +5548,9 @@ const extractOcrWords = (data) => {
                         .sort((a, b) =>
                           Number(a.number || 0) - Number(b.number || 0)
                         )
-                        .map((characteristic) => (
+                                                .map((characteristic) => {
+                          const d = getDisplayValues(characteristic);
+                          return (
                           <tr
                             key={characteristic._id}
                             className="border-t border-slate-100 hover:bg-slate-50"
@@ -5544,16 +5562,16 @@ const extractOcrWords = (data) => {
                               {characteristic.specification || '-'}
                             </td>
                             <td className="px-4 py-3 text-slate-700">
-                              {characteristic.value || '-'}
+                              {d.mainVal || '-'}
                             </td>
                             <td className="px-4 py-3 text-slate-700">
-                              {characteristic.plusTolerance || '-'}
+                              {d.plusTol || '-'}
                             </td>
                             <td className="px-4 py-3 text-slate-700">
-                              {characteristic.minusTolerance || '-'}
+                              {d.minusTol || '-'}
                             </td>
                           </tr>
-                        ))}
+                        )})}
                     </tbody>
                   </table>
                 </div>
