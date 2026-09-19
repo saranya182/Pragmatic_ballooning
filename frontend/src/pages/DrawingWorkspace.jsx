@@ -1714,7 +1714,7 @@ export default function DrawingWorkspace() {
 
     // ─── Case 1: ± or +/- or +-  (symmetric)
     //   examples:  ±0.05   +/-0.05   +-0.05   + - 0.05
-    const symRe = /^(?:±|\+\s*\/\s*-|\+\s*-)\s*(\d+(?:[.,]\d+)?)/;
+    const symRe = /^(?:\u00b1|\+\s*\/\s*-|\+\s*-)\s*(\d+(?:[.,]\d+)?)/;
     const symMatch = rest.match(symRe);
     if (symMatch) {
       const v = symMatch[1].replace(',', '.');
