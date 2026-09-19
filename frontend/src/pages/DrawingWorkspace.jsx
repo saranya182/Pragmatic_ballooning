@@ -4383,7 +4383,8 @@ const extractOcrWords = (data) => {
           HEADER
       ===================================================== */}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+      <div className="sticky top-0 z-40 bg-slate-100 pt-6 -mt-6 pb-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
 
         <div>
           <div className="text-sm text-slate-500">
@@ -4538,6 +4539,7 @@ const extractOcrWords = (data) => {
           </button>
 
         </div>
+      </div>
       </div>
 
       {/* =====================================================
@@ -4873,7 +4875,7 @@ const extractOcrWords = (data) => {
 
             ) : isPdf ? (
 
-              <div className="flex min-w-full justify-center p-5">
+              <div className="w-max min-w-full p-5 mx-auto">
 
                 <div
                   className="relative bg-white shadow-xl"
