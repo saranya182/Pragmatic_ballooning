@@ -1762,14 +1762,30 @@ export default function DrawingWorkspace() {
     if (!characteristic) return;
 
     setCurrentBalloonNo(String(characteristic.number ?? ''));
+
+    // If DB tolerances are missing / zero, auto-parse from the specification
+    const isZeroOrEmpty = (v) => !v || v === '0.00' || v === '0' || v === '';
+    let plusTol = characteristic.plusTolerance || '';
+    let minusTol = characteristic.minusTolerance || '';
+    let mainVal = characteristic.value || '';
+
+    if (isZeroOrEmpty(plusTol) && isZeroOrEmpty(minusTol) && characteristic.specification) {
+      const parsed = parseSpecificationText(characteristic.specification);
+      if (parsed) {
+        if (parsed.mainValue) mainVal = parsed.mainValue;
+        if (parsed.plusTol)  plusTol  = parsed.plusTol;
+        if (parsed.minusTol) minusTol = parsed.minusTol;
+      }
+    }
+
     setEditData({
       characteristicId: characteristic._id,
-      balloonId: characteristic.balloonId,
-      number: String(characteristic.number ?? ''),
-      specification: characteristic.specification || '',
-      value: characteristic.value || '',
-      plusTolerance: characteristic.plusTolerance || '',
-      minusTolerance: characteristic.minusTolerance || ''
+      balloonId:        characteristic.balloonId,
+      number:           String(characteristic.number ?? ''),
+      specification:    characteristic.specification || '',
+      value:            mainVal,
+      plusTolerance:    plusTol,
+      minusTolerance:   minusTol
     });
   };
 

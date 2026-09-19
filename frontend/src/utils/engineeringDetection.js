@@ -109,7 +109,7 @@ const parseCallout = (text) => {
   let result = { type: 'Dimension', value: norm, specification: text, plusTolerance: '0.00', minusTolerance: '0.00', score: 0 };
 
   // Plus/Minus matching (± or +/- or +- or + -)
-  const plusMinusRe = /^\s*(?:[1-9]\d*X\s*)?(?:Ø|A~|R|M|SØ|SR)?\s*(\d+(?:\.\d+)?)(?:\s*[A-Z0-9]+)*\s*(?:±|A|\+\/-|\+-|\+\s*-)\s*(\d+(?:\.\d+)?)/i;
+  const plusMinusRe = /^\s*(?:[1-9]\d*X\s*)?(?:\u00d8|\u2205|R|M|S\u00d8|SR)?\s*(\d+(?:\.\d+)?)(?:\s*[A-Z0-9]+)*\s*(?:\u00b1|\+\s*\/\s*-|\+\s*-)\s*(\d+(?:\.\d+)?)/i;
   const pmMatch = norm.match(plusMinusRe);
   if (pmMatch) {
     result.type = norm.includes('Ø') || norm.includes('A~') ? 'Diameter' : norm.includes('R') ? 'Radius' : norm.includes('M') ? 'Thread' : 'Dimension';
@@ -128,7 +128,7 @@ const parseCallout = (text) => {
   }
 
   // Bilateral matching (+X/-Y)
-  const bilateralRe = /^\s*(?:[1-9]\d*X\s*)?(?:Ø|A~|R|M|SØ|SR)?\s*(\d+(?:\.\d+)?)(?:\s*[A-Z0-9]+)*\s*\+\s*(\d+(?:\.\d+)?)\s*\/\s*-\s*(\d+(?:\.\d+)?)/i;
+  const bilateralRe = /^\s*(?:[1-9]\d*X\s*)?(?:\u00d8|\u2205|R|M|S\u00d8|SR)?\s*(\d+(?:\.\d+)?)(?:\s*[A-Z0-9]+)*\s*\+\s*(\d+(?:\.\d+)?)\s*\/\s*-\s*(\d+(?:\.\d+)?)/i;
   const blMatch = norm.match(bilateralRe);
   if (blMatch) {
     result.type = norm.includes('Ø') || norm.includes('A~') ? 'Diameter' : norm.includes('R') ? 'Radius' : norm.includes('M') ? 'Thread' : 'Dimension';
