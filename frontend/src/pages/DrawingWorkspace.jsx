@@ -1683,17 +1683,18 @@ export default function DrawingWorkspace() {
    *   9.1 (no tolerance)
    *   Ø6.50 0 / -0.10
    */
-  const parseSpecificationText = (text) => {
+    const parseSpecificationText = (text) => {
     if (!text) return null;
     const t = text.trim();
 
-    // Pattern: main value (with optional prefix like Ø/R/SA~) then optional tolerances
-    // Main value: optional symbol chars + digits[.digits]
-    const mainRe = /^([ØøRrA~SA~⌀]*\s*(?:\d+\s*[xX*]\s*)*\d+(?:[.,]\d+)?(?:\s*(?:TYP|THRU|DP|DEEP|MAX|MIN|REF|mm|in|inch))*)/i;
+    // Strip common engineering prefixes / symbols at the front
+    // to get the leading value text
+    // Matches optional Ø/R/M/S prefix chars then the numeric part
+    const mainRe = /^((?:Ø|∅|R|SR|SØ|M)?\s*(?:\d+\s*[xX×]\s*)?\d+(?:[.,]\d+)?(?:\s*(?:TYP|THRU|DP|DEEP|MAX|MIN|REF|mm|in|inch))?)/i;
     const mainMatch = t.match(mainRe);
     if (!mainMatch) return null;
 
-    const mainValue = mainMatch[1].trim();
+    const mainValue = mainMatch[1].replace(',', '.').trim();
     const rest = t.slice(mainMatch[0].length).trim();
 
     if (!rest) {
@@ -1703,41 +1704,50 @@ export default function DrawingWorkspace() {
     let plusTol = '';
     let minusTol = '';
 
-    // ± (symmetric)
-    const symRe = /^[±]s*([d.]+)/;
+    // Helper: normalise a tolerance string to always have a sign prefix
+    const withSign = (raw) => {
+      const s = raw.replace(/\s+/g, '').replace(',', '.');
+      if (s.startsWith('+') || s.startsWith('-')) return s;
+      const num = parseFloat(s);
+      return (num >= 0 ? '+' : '') + s;
+    };
+
+    // ─── Case 1: ± or +/- or +-  (symmetric)
+    //   examples:  ±0.05   +/-0.05   +-0.05   + - 0.05
+    const symRe = /^(?:±|\+\s*\/\s*-|\+\s*-)\s*(\d+(?:[.,]\d+)?)/;
     const symMatch = rest.match(symRe);
     if (symMatch) {
-      plusTol = '+' + symMatch[1];
-      minusTol = '-' + symMatch[1];
-      return { mainValue, plusTol, minusTol };
+      const v = symMatch[1].replace(',', '.');
+      return { mainValue, plusTol: '+' + v, minusTol: '-' + v };
     }
 
-    // +X/-Y or -X/+Y or +X/Y or X/-Y etc (slash separated)
-    const slashRe = /^([+-]?s*[d.]+)s*[/]s*([+-]?s*[d.]+)/;
+    // ─── Case 2: A/B  (slash-separated, each part may have an explicit sign)
+    //   examples:  +0.10/-0.10   +0.02/+0.01   -0.01/-0.03   0/-0.05
+    const slashRe = /^([+-]?\s*\d+(?:[.,]\d+)?)\s*\/\s*([+-]?\s*\d+(?:[.,]\d+)?)/;
     const slashMatch = rest.match(slashRe);
     if (slashMatch) {
-      const a = slashMatch[1].replace(/\s+/g, '');
-      const b = slashMatch[2].replace(/\s+/g, '');
-      // Figure out which is plus, which is minus
-      const aNum = parseFloat(a);
-      const bNum = parseFloat(b);
-      if (a.startsWith('+') || aNum >= 0) {
-        plusTol = (a.startsWith('+') || aNum > 0) ? (a.startsWith('+') ? a : '+' + a) : '+' + a;
-        minusTol = (b.startsWith('-') ? b : '-' + Math.abs(bNum));
+      const a = withSign(slashMatch[1]);
+      const b = withSign(slashMatch[2]);
+      // Convention: upper tolerance first (+ value), lower second (- value)
+      // But respect what the user typed — if both are + store as-is, etc.
+      if (a.startsWith('+') || (!a.startsWith('-') && !b.startsWith('+'))) {
+        plusTol = a;
+        minusTol = b;
       } else {
-        plusTol = (b.startsWith('+') || bNum >= 0) ? (b.startsWith('+') ? b : '+' + b) : '+' + b;
-        minusTol = a.startsWith('-') ? a : '-' + Math.abs(aNum);
+        // first is minus, second is plus — swap to put + first
+        plusTol = b;
+        minusTol = a;
       }
       return { mainValue, plusTol, minusTol };
     }
 
-    // Single tolerance +X or -X
-    const singleRe = /^([+-]s*[d.]+)/;
+    // ─── Case 3: single tolerance  +X  or  -X  (unilateral)
+    const singleRe = /^([+-])\s*(\d+(?:[.,]\d+)?)/;
     const singleMatch = rest.match(singleRe);
     if (singleMatch) {
-      const v = singleMatch[1].replace(/\s+/g, '');
-      if (v.startsWith('+')) plusTol = v;
-      else minusTol = v;
+      const v = singleMatch[1] + singleMatch[2].replace(',', '.');
+      if (v.startsWith('+')) { plusTol = v; }
+      else { minusTol = v; }
       return { mainValue, plusTol, minusTol };
     }
 
@@ -1806,39 +1816,40 @@ export default function DrawingWorkspace() {
     }
   };
 
-  const saveEdit = async () => {
-    if (!editData?.characteristicId) {
+  const saveEdit = async (overrideData = null) => {
+    const dataToSave = overrideData || editData;
+    if (!dataToSave?.characteristicId) {
       setMessage('Enter a balloon number or select a balloon first');
       return;
     }
 
     try {
-      setSavingCharacteristicId(editData.characteristicId);
+      setSavingCharacteristicId(dataToSave.characteristicId);
 
-      const number = Number(currentBalloonNo || editData.number);
+      const number = Number(currentBalloonNo || dataToSave.number);
       setEditData(prev => ({ ...prev, number: String(number) }));
 
       const updated = await api.put(
-        `/characteristics/${editData.characteristicId}`,
+        `/characteristics/${dataToSave.characteristicId}`,
         {
           number,
-          specification: editData.specification,
-          value: editData.value,
-          plusTolerance: editData.plusTolerance,
-          minusTolerance: editData.minusTolerance
+          specification: dataToSave.specification,
+          value: dataToSave.value,
+          plusTolerance: dataToSave.plusTolerance,
+          minusTolerance: dataToSave.minusTolerance
         }
       );
 
       // Keep the balloon number on the drawing in sync
       await api.put(
-        `/balloons/${editData.balloonId}`,
+        `/balloons/${dataToSave.balloonId}`,
         { number }
       );
 
       if (updated) {
         setCharacteristics((prev) =>
           prev.map((item) =>
-            item._id === editData.characteristicId
+            item._id === dataToSave.characteristicId
               ? { ...item, ...updated }
               : item
           )
@@ -1847,7 +1858,7 @@ export default function DrawingWorkspace() {
 
       setBalloons((prev) =>
         prev.map((item) =>
-          item._id === editData.balloonId
+          item._id === dataToSave.balloonId
             ? { ...item, number }
             : item
         )
