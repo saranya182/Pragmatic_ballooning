@@ -1723,18 +1723,20 @@ export default function DrawingWorkspace() {
 
     // ─── Case 2: A/B  (slash-separated, each part may have an explicit sign)
     //   examples:  +0.10/-0.10   +0.02/+0.01   -0.01/-0.03   0/-0.05
-    const slashRe = /^([+-]?\s*\d+(?:[.,]\d+)?)\s*\/\s*([+-]?\s*\d+(?:[.,]\d+)?)/;
+    const slashRe = /^([+-]?\s*\d+(?:[.,]\d+)?)(?:\s*\/\s*|\s+)([+-]?\s*\d+(?:[.,]\d+)?)/;
     const slashMatch = rest.match(slashRe);
     if (slashMatch) {
       const a = withSign(slashMatch[1]);
       const b = withSign(slashMatch[2]);
       // Convention: upper tolerance first (+ value), lower second (- value)
       // But respect what the user typed — if both are + store as-is, etc.
-      if (a.startsWith('+') || (!a.startsWith('-') && !b.startsWith('+'))) {
+      const valA = parseFloat(a);
+      const valB = parseFloat(b);
+      // Put the larger value in Upper Tolerance (plusTol) and smaller in Lower (minusTol)
+      if (valA >= valB) {
         plusTol = a;
         minusTol = b;
       } else {
-        // first is minus, second is plus — swap to put + first
         plusTol = b;
         minusTol = a;
       }
