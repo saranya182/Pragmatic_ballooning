@@ -26,13 +26,13 @@ if not exist "frontend\node_modules" (
 
 echo.
 echo Starting Backend Server...
-start "Backend - Pragmatic Ballooning" cmd /k "title Backend && cd /d "%~dp0backend" && node server.js"
+start "Backend - Pragmatic Ballooning" cmd /k "title Backend && cd backend && node server.js"
 
 echo Waiting for backend to start...
 timeout /t 3 /nobreak >nul
 
 echo Starting Frontend UI...
-start "Frontend - Pragmatic Ballooning" cmd /k "title Frontend && cd /d "%~dp0frontend" && npm run dev -- --open"
+start "Frontend - Pragmatic Ballooning" cmd /k "title Frontend && cd frontend && npm run dev -- --open"
 
 echo.
 echo Application is starting up...
