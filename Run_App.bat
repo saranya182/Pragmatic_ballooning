@@ -5,6 +5,9 @@ taskkill /F /IM node.exe >nul 2>&1
 
 cd /d "%~dp0"
 
+echo === Pragmatic Ballooning Application ===
+echo.
+
 echo Checking Backend dependencies...
 if not exist "backend\node_modules" (
     echo Installing Backend Dependencies (First Time Setup)...
@@ -21,8 +24,22 @@ if not exist "frontend\node_modules" (
     cd ..
 )
 
-echo Starting Background Services...
-start "Backend Services" cmd /k "cd backend && start /B node server.js"
+echo.
+echo Starting Backend Server...
+start "Backend - Pragmatic Ballooning" cmd /k "title Backend && cd /d "%~dp0backend" && node server.js"
+
+echo Waiting for backend to start...
+timeout /t 3 /nobreak >nul
 
 echo Starting Frontend UI...
-start "Frontend UI" cmd /k "cd frontend && npm run dev -- --open"
+start "Frontend - Pragmatic Ballooning" cmd /k "title Frontend && cd /d "%~dp0frontend" && npm run dev -- --open"
+
+echo.
+echo Application is starting up...
+echo Backend:  http://localhost:5000
+echo Frontend: http://localhost:3000
+echo.
+echo Both windows will open automatically.
+echo Close both black windows to stop the app.
+echo.
+pause
