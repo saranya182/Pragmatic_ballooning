@@ -2947,10 +2947,14 @@ const extractOcrWords = (data) => {
               const ocrResult = parseNearestDimension(ocrItems, ocrTarget);
               // If OCR found a symbol like Ø13, use it!
               if (ocrResult && ocrResult.value && !/^\d+(?:\.\d+)?$/.test(ocrResult.value)) {
-                 pdfResult.value = ocrResult.value;
-                 pdfResult.specification = ocrResult.specification || pdfResult.specification;
-                 console.log("OCR rescued vector symbol:", ocrResult.value);
-              }
+    const pdfNum = pdfResult.value.match(/\d+(?:\.\d+)?/)?.[0];
+    const ocrNum = ocrResult.value.match(/\d+(?:\.\d+)?/)?.[0];
+    if (pdfNum && ocrNum && Number(pdfNum) === Number(ocrNum)) {
+        pdfResult.value = ocrResult.value;
+        pdfResult.specification = ocrResult.specification || pdfResult.specification;
+        console.log("OCR rescued vector symbol:", ocrResult.value);
+    }
+}
             }
           }
         }
@@ -4978,15 +4982,15 @@ const extractOcrWords = (data) => {
                             balloon
                           ) => {
                             const x =
-                              balloon.x ?? 0;
+                              (balloon.x ?? 0) / dRatio;
                             const y =
-                              balloon.y ?? 0;
+                              (balloon.y ?? 0) / dRatio;
                             const ax =
-                              balloon.anchorX ??
-                              x + 12;
+                              (balloon.anchorX ??
+                              (balloon.x ?? 0) + 12) / dRatio;
                             const ay =
-                              balloon.anchorY ??
-                              y + 12;
+                              (balloon.anchorY ??
+                              (balloon.y ?? 0) + 12) / dRatio;
 
                             /*
                               Direction from the balloon
