@@ -2876,18 +2876,17 @@ const extractOcrWords = (data) => {
 
       const inside = items
         .filter((item) => {
-          const itemX =
-            detectionCenterX(item);
+          const itemLeft = item.x;
+          const itemRight = item.x + (item.width || 0);
+          const itemTop = item.source === 'ocr' ? item.y : item.y - (item.height || 0);
+          const itemBottom = item.source === 'ocr' ? item.y + (item.height || 0) : item.y;
+          
+          const intersects = !(itemLeft > rect.x2 || itemRight < rect.x1 || itemTop > rect.y2 || itemBottom < rect.y1);
+          const itemX = detectionCenterX(item);
+          const itemY = detectionCenterY(item);
+          const centerInside = (itemX >= rect.x1 && itemX <= rect.x2 && itemY >= rect.y1 && itemY <= rect.y2);
 
-          const itemY =
-            detectionCenterY(item);
-
-          return (
-            itemX >= rect.x1 &&
-            itemX <= rect.x2 &&
-            itemY >= rect.y1 &&
-            itemY <= rect.y2
-          );
+          return intersects || centerInside;
         })
         .sort((a, b) => {
           const distanceA = Math.hypot(
@@ -2969,9 +2968,15 @@ const extractOcrWords = (data) => {
 
       // Filter OCR items that are geometrically inside the rectangle
       const inside = ocrItems.filter((item) => {
+        const itemLeft = item.x;
+        const itemRight = item.x + (item.width || 0);
+        const itemTop = item.y;
+        const itemBottom = item.y + (item.height || 0);
+        const intersects = !(itemLeft > rect.x2 || itemRight < rect.x1 || itemTop > rect.y2 || itemBottom < rect.y1);
         const itemX = detectionCenterX(item);
         const itemY = detectionCenterY(item);
-        return itemX >= rect.x1 && itemX <= rect.x2 && itemY >= rect.y1 && itemY <= rect.y2;
+        const centerInside = (itemX >= rect.x1 && itemX <= rect.x2 && itemY >= rect.y1 && itemY <= rect.y2);
+        return intersects || centerInside;
       });
 
       let target = null;
